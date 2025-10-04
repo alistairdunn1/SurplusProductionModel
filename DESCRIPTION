@@ -40,3 +40,7 @@ Suggests:
     future.apply
 VignetteBuilder: knitr
 Config/testthat/edition: 3
+Collate:
+    generics.R
+    classes.R
+    constructors.R
