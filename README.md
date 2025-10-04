@@ -51,6 +51,59 @@ print(ref_points)
 plot_model_fit(model_fit)
 ```
 
+## Worked Example: Model Fitting and Diagnostics
+
+This example demonstrates fitting the Pella-Tomlinson surplus production model to synthetic data and generating diagnostic plots.
+
+```r
+library(SurplusProductionModel)
+
+# Generate synthetic example data
+set.seed(123)
+years <- 2010:2020
+n_years <- length(years)
+true_r <- 0.3
+true_K <- 5000
+true_m <- 2.0  # Schaefer model
+true_q <- 0.001
+true_B0 <- 4000
+catch <- rep(800, n_years)
+biomass <- numeric(n_years)
+biomass[1] <- true_B0
+for (t in 1:(n_years - 1)) {
+  production <- true_r * biomass[t] * (1 - biomass[t] / true_K)
+  biomass[t + 1] <- biomass[t] + production - catch[t]
+}
+cpue <- pmax(0.001, true_q * biomass * exp(rnorm(n_years, 0, 0.05)))
+
+# Prepare data for model fitting
+model_data <- list(
+  cpue_data = data.frame(year = years, cpue = cpue),
+  catch_data = data.frame(year = years, catch = catch)
+)
+
+# Fit the model
+model_fit <- fit_pella_tomlinson_model(model_data)
+
+# Print fitted parameters
+print(model_fit)
+
+# Calculate reference points
+ref_points <- calculate_reference_points(model_fit)
+print(ref_points)
+
+# Generate diagnostic plots
+plot_model_fit(model_fit)
+```
+
+**Diagnostic plots produced:**
+- Estimated biomass trajectory
+- CPUE: observed vs fitted
+- Log-residuals (CPUE)
+- Harvest rate trajectory
+
+These plots help assess model fit, residual structure, and exploitation trends.
+
 ## Mathematical Formulation
 
 The Pella-Tomlinson model is defined by:

@@ -27,8 +27,16 @@ export("results")
 export("model_data")
 export("fitted")
 
-# Export main functions (to be implemented)
-# export("fit_pella_tomlinson_model")
-# export("calculate_reference_points")
+# Export validation functions
+export("validate_cpue_data")
+export("validate_catch_data")
+export("validate_pt_parameters")
+
+# Export main functions
+export("fit_pella_tomlinson_model")
+export("calculate_reference_points")
+export("estimate_biomass")
+export("pella_tomlinson_production")
+export("plot_model_fit")
 
 # S4 methods will be automatically exported when classes are exported

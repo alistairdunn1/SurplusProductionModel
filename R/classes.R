@@ -99,6 +99,8 @@ setClass(
     # Validate parameters if present
     if (length(object@parameters) > 0) {
       required_params <- c("r", "K", "m", "q", "sigma_proc", "sigma_obs")
+      optional_params <- c("B0", "sigma_process", "sigma_obs") # Alternative names and optional parameters
+      allowed_params <- c(required_params, optional_params)
       param_names <- names(object@parameters)
 
       if (is.null(param_names)) {
@@ -112,7 +114,7 @@ setClass(
           ))
         }
 
-        extra_params <- setdiff(param_names, required_params)
+        extra_params <- setdiff(param_names, allowed_params)
         if (length(extra_params) > 0) {
           errors <- c(errors, paste(
             "Unknown parameters:",
