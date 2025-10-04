@@ -18,7 +18,7 @@
 # Output files from R CMD check
 /*.Rcheck/
 
-# RStudio files
+# Positron files (formerly RStudio)
 .Rproj.user/
 *.Rproj
 
@@ -46,7 +46,7 @@ docs/
 # translation temp files
 po/*~
 
-# RStudio Connect folder
+# Positron Connect folder (formerly RStudio Connect)
 rsconnect/
 
 # MacOS

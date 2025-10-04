@@ -7,5 +7,5 @@ test_that("package loads successfully", {
 
 test_that("basic structure is in place", {
   # Test that basic package structure exists
-  expect_true(TRUE)  # Placeholder test
+  expect_true(TRUE) # Placeholder test
 })
