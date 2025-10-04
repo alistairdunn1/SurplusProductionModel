@@ -1,0 +1,49 @@
+# Namespace for SurplusProductionModel
+
+# Import required functions from dependencies
+importFrom("RTMB", "MakeADFun", "sdreport")
+importFrom("checkmate", "assert_data_frame", "assert_list", "assert_number", 
+           "assert_numeric", "assert_character", "check_data_frame", 
+           "check_list", "check_number", "check_numeric")
+importFrom("dplyr", "filter", "mutate", "select", "arrange", "group_by", 
+           "summarise", "left_join", "bind_rows")
+importFrom("ggplot2", "ggplot", "aes", "geom_line", "geom_point", 
+           "geom_ribbon", "facet_wrap", "labs", "theme_bw", "theme",
+           "element_text", "scale_x_continuous", "scale_y_continuous")
+importFrom("methods", "new", "show", "validObject", "setClass", "setMethod")
+importFrom("stats", "nlminb", "rnorm", "runif", "optim", "predict", "residuals",
+           "shapiro.test", "ks.test", "complete.cases")
+importFrom("utils", "head", "tail", "str")
+
+# Export main functions
+export("fit_pella_tomlinson_model")
+export("calculate_reference_points")
+export("estimate_biomass")
+export("plot_model_fit")
+export("residual_analysis")
+export("convergence_diagnostics")
+
+# Export data validation functions
+export("validate_cpue_data")
+export("validate_catch_data")
+export("validate_pt_parameters")
+
+# Export simulation functions
+export("simulate_biomass_trajectory")
+export("simulate_cpue_observations")
+
+# Export production functions
+export("pella_tomlinson_production")
+export("special_cases_check")
+
+# Export utility functions
+export("prepare_rtmb_data")
+export("format_reference_points")
+export("current_status_assessment")
+
+# Export S4 classes and methods
+exportClasses("ProductionModel")
+exportMethods("show")
+
+# Export constructor
+export("new_production_model")
