@@ -18,7 +18,7 @@ true_B0 <- 4000
 # Generate deterministic biomass trajectory
 true_biomass <- numeric(n_years)
 true_biomass[1] <- true_B0
-catch_data <- rep(800, n_years) # Constant catch
+catch_data <- rep(600, n_years) # Constant catch
 
 for (t in 1:(n_years - 1)) {
   # Pella-Tomlinson production

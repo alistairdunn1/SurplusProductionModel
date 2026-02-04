@@ -34,12 +34,12 @@ NULL
 #' The objective function implements the negative log-likelihood for the
 #' Pella-Tomlinson surplus production model in state-space form:
 #'
-#' Production function: P(B) = r * B * (1 - (B/K)^(m-1)) / m
+#' Production function: \deqn{P(B) = r .B . (1 - (B/K)^(m-1)) / m}
 #'
-#' State equation: B[t+1] = B[t] + P(B[t]) - C[t] + ε[t]
+#' State equation: \deqn{B[t+1] = B[t] + P(B[t]) - C[t] + ε[t]}
 #' where ε[t] ~ N(0, σ²_process)
 #'
-#' Observation equation: CPUE[t] = q * B[t] * exp(η[t])
+#' Observation equation: \deqn{CPUE[t] = q . B[t] . exp(η[t])}
 #' where η[t] ~ N(0, σ²_obs)
 #'
 #' Parameters are log-transformed to ensure positivity constraints.

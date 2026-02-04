@@ -31,9 +31,9 @@
 #'
 #' Production function: P(B) = r × B × (1 - (B/K)^(m-1)) / m
 #'
-#' State equation: B[t+1] = B[t] + P(B[t]) - C[t] + ε[t]
+#' State equation: \deqn{B[t+1] = B[t] + P(B[t]) - C[t] + ε[t]}
 #'
-#' Observation equation: CPUE[t] = q × B[t] × exp(η[t])
+#' Observation equation: \deqn{CPUE[t] = q × B[t] × exp(η[t])}
 #'
 #' @docType package
 #' @name SurplusProductionModel-package
