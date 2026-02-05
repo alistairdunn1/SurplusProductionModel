@@ -130,21 +130,19 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # Create simple objective function for now (non-RTMB)
   # TODO: Implement full RTMB integration in future version
   #obj_fun <- create_simple_objective(processed_data, params_init)
-  #browser()
-  #params_init$log_B <- rep(2.0, length(processed_data$year) - 1)
-  #browser()
+  
+  # create TMB objective function
   cmb <- function(f, d) function(p) f(p, d)
   obj_fun <- MakeADFun(cmb(rtmb_objective, processed_data), params_init)
-  #obj_fun <- create_rtmb_objective(processed_data, params_init)
-  message("ADFun okay")
-  # Optimize using nlminb (without RTMB for MVP)
+
+  # Optimize using nlminb
   start_time <- Sys.time()
 
   opt_result <- nlminb(
-    start = obj_fun$par, 
+    start     = obj_fun$par, 
     objective = obj_fun$fn, 
-    gradient = obj_fun$gr,
-    control = options$control
+    gradient  = obj_fun$gr,
+    control   = options$control
   )
 
   end_time <- Sys.time()
