@@ -55,6 +55,7 @@ NULL
 #'
 #' @return Function that takes parameter vector and returns negative log-likelihood
 #'
+#' @import RTMB
 #' @keywords internal
 create_simple_objective <- function(data, initial_params) {
   # Store parameter names for reference
@@ -133,6 +134,68 @@ create_simple_objective <- function(data, initial_params) {
 
     return(nll)
   }
+}
+#' @keywords internal
+rtmb_objective <- function(pars, data) {
+    
+    getAll(data, pars, warn = FALSE)
+    
+    message("ADFun 1")
+    # Transform parameters from log scale
+    r         <- exp(log_r)
+    K         <- exp(log_K)
+    m         <- exp(log_m)
+    q         <- exp(log_q)
+    sigma_obs <- exp(log_sigma_obs)
+    B0         <- exp(log_B0)
+    
+    # observed values
+    cpue <- OBS(cpue)
+    message("ADFun 1b")
+    # Data dimensions
+    n_years <- length(years)
+    
+    # Initialize biomass trajectory
+    B <- AD(numeric(n_years))
+    #ADREPORT(B)
+    #
+    B[1] <- B0
+
+    # Calculate biomass dynamics
+    for (t in 1:(n_years - 1)) {
+        
+        # Production using Pella-Tomlinson
+        #production <- r * B[t] * (1 - (B[t] / K))
+        message("ADFun 1d")
+        # Next year's biomass
+        B[t + 1] <- B[t] + r * B[t] * (1 - B[t] / K) - catch[t]
+    }
+    message("ADFun 2")
+    #REPORT(B)
+    # Calculate observation likelihood (CPUE)
+    cpue_pred <- AD(numeric(n_years))
+    #cpue_loc  <- logical(n_years)
+    for (t in 1:n_years) {
+        #if (!is.na(cpue[t]) && cpue[t] > 0 && B[t] > 0) {
+            
+            # Expected CPUE
+            cpue_pred[t] <- q * B[t]
+            message("ADFun 3a ")
+            # location of data in vector
+            #cpue_loc[t] <- 1 > 0
+        #}
+    }
+    message("ADFun 3a")
+    REPORT(cpue_pred)
+    #cpue[cpue_loc] %~% dlnorm(log(cpue_pred[cpue_loc]) - sigma_obs^2 / 2, sigma_obs) 
+    #cpue %~% dlnorm(log(cpue_pred), sdlog = 0.1) 
+    
+    #nll_cpue <- -dlnorm(x = cpue, meanlog = log(cpue_pred), sdlog = sigma_obs, log = TRUE)
+    nll_cpue <- -dlnorm(x = cpue, mean = log(cpue_pred), sd = 0.1, log = TRUE)
+    
+    message("ADFun 3b")
+    #REPORT(cpue_pred)
+    return(sum(nll_cpue))
 }
 
 #' Generate Starting Parameter Values

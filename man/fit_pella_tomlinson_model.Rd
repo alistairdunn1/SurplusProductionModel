@@ -64,5 +64,4 @@ model_fit <- fit_pella_tomlinson_model(data_list)
 # View results
 print(model_fit)
 }
-
 }

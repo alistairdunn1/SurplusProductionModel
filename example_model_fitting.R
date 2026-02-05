@@ -2,6 +2,8 @@
 
 # Load the package
 library(SurplusProductionModel)
+library(RTMB)
+library(TMBhelper)
 
 # Create synthetic example data for demonstration
 set.seed(123)
