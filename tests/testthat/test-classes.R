@@ -1,4 +1,4 @@
-# Test S4 Classes and Constructors
+# Test S3 Classes and Constructors
 # Tests for ProductionModel class definition, validation, and constructor functions
 
 test_that("ProductionModel class can be created with valid data", {
@@ -12,11 +12,11 @@ test_that("ProductionModel class can be created with valid data", {
   model <- ProductionModel(years = years, catch = catch, cpue = cpue, effort = effort)
 
   # Basic checks
-  expect_s4_class(model, "ProductionModel")
-  expect_true(validObject(model))
+  expect_s3_class(model, "ProductionModel")
+  expect_true(inherits(model, "ProductionModel"))
   expect_false(fitted(model))
-  expect_equal(model@model_type, "pella_tomlinson")
-  expect_true(inherits(model@creation_date, "POSIXct"))
+  expect_equal(model$model_type, "pella_tomlinson")
+  expect_true(inherits(model$creation_date, "POSIXct"))
 })
 
 test_that("ProductionModel validates data consistency", {
@@ -131,7 +131,6 @@ test_that("ProductionModel accepts custom parameters", {
   )
 
   expect_equal(parameters(model), custom_params)
-  expect_true(validObject(model))
 })
 
 test_that("ProductionModel validates parameter constraints", {
@@ -191,12 +190,12 @@ test_that("ProductionModel accessor methods work correctly", {
   model <- ProductionModel(years = years, catch = catch, cpue = cpue, effort = effort)
 
   # Test data accessor
-  model_data <- model_data(model)
-  expect_type(model_data, "list")
-  expect_equal(model_data$years, years)
-  expect_equal(model_data$catch, catch)
-  expect_equal(model_data$cpue, cpue)
-  expect_equal(model_data$effort, effort)
+  md <- model_data(model)
+  expect_type(md, "list")
+  expect_equal(md$years, years)
+  expect_equal(md$catch, catch)
+  expect_equal(md$cpue, cpue)
+  expect_equal(md$effort, effort)
 
   # Test parameters accessor
   model_params <- parameters(model)
@@ -230,7 +229,7 @@ test_that("ProductionModel print method works", {
   expect_true(any(grepl("Fitted: No", output)))
 })
 
-test_that("ProductionModel show method works", {
+test_that("validate_ProductionModel catches invalid objects", {
   years <- 2000:2005
   catch <- c(1000, 1100, 1200, 950, 1050, 1300)
   cpue <- c(2.1, 2.0, 1.9, 2.2, 2.1, 1.8)
@@ -238,47 +237,24 @@ test_that("ProductionModel show method works", {
 
   model <- ProductionModel(years = years, catch = catch, cpue = cpue, effort = effort)
 
-  # Test that show works (it calls print)
-  output <- capture.output(result <- show(model))
-  expect_identical(result, model)
-  expect_true(length(output) > 0)
-})
+  # Valid object passes
 
-test_that("ProductionModel validity function catches invalid objects", {
-  # Create a valid model first
-  years <- 2000:2005
-  catch <- c(1000, 1100, 1200, 950, 1050, 1300)
-  cpue <- c(2.1, 2.0, 1.9, 2.2, 2.1, 1.8)
-  effort <- catch / cpue
-
-  model <- ProductionModel(years = years, catch = catch, cpue = cpue, effort = effort)
-
-  # Test that manually creating invalid objects fails validation
+  expect_true(validate_ProductionModel(model))
 
   # Invalid model_type
   invalid_model <- model
-  invalid_model@model_type <- "invalid_type"
-  expect_error(validObject(invalid_model), "model_type must be 'pella_tomlinson'")
+  invalid_model$model_type <- "invalid_type"
+  expect_error(validate_ProductionModel(invalid_model), "model_type must be 'pella_tomlinson'")
 
   # Invalid fitted status
   invalid_model <- model
-  invalid_model@fitted <- c(TRUE, FALSE)
-  expect_error(validObject(invalid_model), "fitted must be a single logical value")
+  invalid_model$fitted <- c(TRUE, FALSE)
+  expect_error(validate_ProductionModel(invalid_model), "fitted must be a single logical value")
 
-  # Invalid creation_date (test by creating new object with invalid slot)
-  expect_error(
-    {
-      new("ProductionModel",
-        parameters = model@parameters,
-        data = model@data,
-        results = model@results,
-        fitted = model@fitted,
-        model_type = model@model_type,
-        creation_date = c(Sys.time(), Sys.time())
-      ) # Multiple dates
-    },
-    "creation_date must be a single POSIXct value"
-  )
+  # Invalid creation_date
+  invalid_model <- model
+  invalid_model$creation_date <- c(Sys.time(), Sys.time())
+  expect_error(validate_ProductionModel(invalid_model), "creation_date must be a single POSIXct value")
 })
 
 test_that("ProductionModel handles edge cases", {
@@ -289,7 +265,7 @@ test_that("ProductionModel handles edge cases", {
     cpue = 2.0,
     effort = 500
   )
-  expect_true(validObject(model_single))
+  expect_s3_class(model_single, "ProductionModel")
   expect_equal(length(model_data(model_single)$years), 1)
 
   # Large dataset
@@ -306,6 +282,6 @@ test_that("ProductionModel handles edge cases", {
     cpue = cpue_large,
     effort = effort_large
   )
-  expect_true(validObject(model_large))
+  expect_s3_class(model_large, "ProductionModel")
   expect_equal(length(model_data(model_large)$years), n)
 })

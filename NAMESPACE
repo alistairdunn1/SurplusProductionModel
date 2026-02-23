@@ -1,31 +1,46 @@
 # Namespace for SurplusProductionModel
 
 # Import required functions from dependencies
-importFrom("RTMB", "MakeADFun", "sdreport")
-importFrom("checkmate", "assert_data_frame", "assert_list", "assert_number", 
+importFrom("RTMB", "MakeADFun", "sdreport", "advector", "ADREPORT")
+importFrom("stats", "setNames")
+importFrom("checkmate", "assert_data_frame", "assert_list", "assert_number",
            "assert_numeric", "assert_character", "assert_integerish", "assert_names",
            "check_data_frame", "check_list", "check_number", "check_numeric")
-importFrom("dplyr", "filter", "mutate", "select", "arrange", "group_by", 
-           "summarise", "left_join", "bind_rows")
-importFrom("ggplot2", "ggplot", "aes", "geom_line", "geom_point", 
-           "geom_ribbon", "facet_wrap", "labs", "theme_bw", "theme",
+importFrom("ggplot2", "ggplot", "aes", "geom_line", "geom_point",
+           "geom_ribbon", "geom_hline", "geom_vline", "geom_smooth",
+           "geom_histogram", "geom_bar", "geom_col",
+           "geom_density",
+           "stat_qq", "stat_qq_line", "stat_function",
+           "annotate", "after_stat",
+           "scale_colour_manual", "scale_color_brewer",
+           "facet_wrap", "facet_grid",
+           "labs", "theme_bw", "theme", "ggtitle",
            "element_text", "scale_x_continuous", "scale_y_continuous")
-import("methods")
 importFrom("stats", "nlminb", "rnorm", "runif", "optim", "predict", "residuals",
-           "shapiro.test", "ks.test", "complete.cases")
-importFrom("utils", "head", "tail", "str")
+           "shapiro.test", "ks.test", "complete.cases", "coef", "lm", "median",
+           "quantile", "sd", "fitted", "qnorm", "dnorm", "qchisq", "acf")
+importFrom("utils", "head", "tail", "str", "modifyList", "capture.output")
+importFrom("grDevices", "adjustcolor")
+importFrom("graphics", "pairs")
 
-# Export S4 classes
-exportClasses("ProductionModel")
-
-# Export constructor functions
+# Export constructor
 export("ProductionModel")
 
-# Export generic functions  
+# Export S3 generics
 export("parameters")
 export("results")
 export("model_data")
-export("fitted")
+
+# Export S3 methods
+S3method("parameters", "ProductionModel")
+S3method("results", "ProductionModel")
+S3method("model_data", "ProductionModel")
+S3method("fitted", "ProductionModel")
+S3method("print", "ProductionModel")
+S3method("summary", "ProductionModel")
+
+# Export validation
+export("validate_ProductionModel")
 
 # Export validation functions
 export("validate_cpue_data")
@@ -39,4 +54,33 @@ export("estimate_biomass")
 export("pella_tomlinson_production")
 export("plot_model_fit")
 
-# S4 methods will be automatically exported when classes are exported
+# Export convergence diagnostics
+export("jitter_test")
+export("retrospective_analysis")
+
+# Export enhanced diagnostic plots
+export("plot_residuals")
+export("plot_biomass")
+
+# Export profile likelihood
+export("profile_likelihood")
+
+# Export Bayesian functions
+export("bayesian_fit")
+export("posterior_predictive_check")
+
+# S3 methods for convergence diagnostics
+S3method("print", "jitter_test")
+S3method("plot", "jitter_test")
+S3method("print", "retro_analysis")
+S3method("plot", "retro_analysis")
+
+# S3 methods for profile likelihood
+S3method("print", "profile_likelihood")
+S3method("plot", "profile_likelihood")
+
+# S3 methods for Bayesian fitting
+S3method("print", "bayes_fit")
+S3method("plot", "bayes_fit")
+S3method("print", "ppc_result")
+S3method("plot", "ppc_result")

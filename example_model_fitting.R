@@ -67,7 +67,7 @@ cat("\nModel Fitting Results:\n")
 print(fitted_model)
 
 # Extract fitted parameters
-fitted_params <- fitted_model@parameters
+fitted_params <- fitted_model$parameters
 cat("\nFitted Parameters:\n")
 cat("r (intrinsic growth rate):", round(fitted_params["r"], 4), "\n")
 cat("K (carrying capacity):", round(fitted_params["K"], 1), "tonnes\n")
@@ -92,11 +92,11 @@ cat("True m:", true_m, "vs Fitted m:", round(fitted_params["m"], 2), "\n")
 cat("True q:", true_q, "vs Fitted q:", round(fitted_params["q"], 6), "\n")
 
 # Model diagnostics
-if ("likelihood" %in% names(fitted_model@results)) {
+if ("likelihood" %in% names(fitted_model$results)) {
   cat("\nModel fit statistics:\n")
-  cat("Negative log-likelihood:", round(fitted_model@results$likelihood, 2), "\n")
-  cat("AIC:", round(fitted_model@results$aic, 2), "\n")
-  cat("Convergence code:", fitted_model@results$convergence, "\n")
+  cat("Negative log-likelihood:", round(fitted_model$results$likelihood, 2), "\n")
+  cat("AIC:", round(fitted_model$results$aic, 2), "\n")
+  cat("Convergence code:", fitted_model$results$convergence, "\n")
 }
 
 cat("\nExample completed successfully!\n")

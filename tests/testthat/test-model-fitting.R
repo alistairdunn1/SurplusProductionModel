@@ -87,9 +87,9 @@ test_that("preprocess_model_data works correctly", {
   expect_equal(length(processed$years), length(processed$cpue))
   expect_equal(length(processed$years), length(processed$catch))
 
-  # Check years are in correct range
-  expect_true(all(processed$years >= 2002))
-  expect_true(all(processed$years <= 2018))
+  # Check years are in correct range (union of catch and CPUE years)
+  expect_true(all(processed$years >= 2000))
+  expect_true(all(processed$years <= 2020))
 
   # Check years are sorted
   expect_true(all(diff(processed$years) == 1))
@@ -100,11 +100,31 @@ test_that("preprocess_model_data works correctly", {
 
   expect_error(preprocess_model_data(cpue_data_short, catch_data_short))
 
-  # Test missing catch values error
+  # Test missing catch values - NA catch values are now set to 0 with a warning
   catch_data_na <- data.frame(year = 2000:2005, catch = c(1000, NA, 1200, 1100, 1000, 1050))
   cpue_data_overlap <- data.frame(year = 2000:2005, cpue = rnorm(6, 1.5, 0.1))
 
-  expect_error(preprocess_model_data(cpue_data_overlap, catch_data_na))
+  expect_warning(
+    preprocess_model_data(cpue_data_overlap, catch_data_na),
+    "Missing catch values"
+  )
+
+  # Test gap-filling: input years with gaps should produce a complete sequence
+  # Need >= 3 overlapping years between catch and cpue
+  catch_gap <- data.frame(year = c(2000, 2002, 2004, 2006), catch = c(500, 600, 700, 800))
+  cpue_gap <- data.frame(year = c(2000, 2002, 2004, 2006), cpue = c(1.2, 1.1, 1.0, 0.9))
+
+  processed_gap <- preprocess_model_data(cpue_gap, catch_gap)
+
+  expect_equal(processed_gap$years, 2000:2006)
+  expect_true(all(diff(processed_gap$years) == 1))
+  # Gap years should have zero catch and NA CPUE
+  expect_equal(processed_gap$catch[processed_gap$years == 2001], 0)
+  expect_equal(processed_gap$catch[processed_gap$years == 2003], 0)
+  expect_equal(processed_gap$catch[processed_gap$years == 2005], 0)
+  expect_true(is.na(processed_gap$cpue[processed_gap$years == 2001]))
+  expect_true(is.na(processed_gap$cpue[processed_gap$years == 2003]))
+  expect_true(is.na(processed_gap$cpue[processed_gap$years == 2005]))
 })
 
 test_that("transform_parameters_to_natural works correctly", {
@@ -254,10 +274,10 @@ test_that("fit_pella_tomlinson_model integration test with simple data", {
 
   # Basic checks if fitting succeeded
   if (!is.null(result)) {
-    expect_s4_class(result, "ProductionModel")
-    expect_true(result@fitted)
-    expect_true(length(result@parameters) > 0)
-    expect_true("biomass" %in% names(result@results))
-    expect_true("likelihood" %in% names(result@results))
+    expect_s3_class(result, "ProductionModel")
+    expect_true(result$fitted)
+    expect_true(length(result$parameters) > 0)
+    expect_true("biomass" %in% names(result$results))
+    expect_true("likelihood" %in% names(result$results))
   }
 })

@@ -57,16 +57,16 @@ calculate_reference_points <- function(model_fit) {
     stop("model_fit must be a ProductionModel object")
   }
 
-  if (!model_fit@fitted) {
+  if (!model_fit$fitted) {
     stop("Model must be fitted before calculating reference points. Use fit_pella_tomlinson_model() first.")
   }
 
-  if (length(model_fit@parameters) == 0) {
+  if (length(model_fit$parameters) == 0) {
     stop("No fitted parameters found in model object")
   }
 
   # Extract fitted parameters
-  parameters <- model_fit@parameters
+  parameters <- model_fit$parameters
 
   required_params <- c("r", "K", "m")
   if (!all(required_params %in% names(parameters))) {
@@ -84,11 +84,11 @@ calculate_reference_points <- function(model_fit) {
 
   # Calculate reference points based on shape parameter
   if (abs(m - 1) < 1e-6) {
-    # Fox model (m ≈ 1) - use limiting case
+    # Fox model (m ~ 1) - use limiting case
     msy <- r * K / exp(1) # r * K / e
     bmsy <- K / exp(1) # K / e
   } else if (abs(m - 2) < 1e-6) {
-    # Schaefer model (m ≈ 2) - analytical solution
+    # Schaefer model (m ~ 2) - analytical solution
     msy <- r * K / 4
     bmsy <- K / 2
   } else {
@@ -115,8 +115,8 @@ calculate_reference_points <- function(model_fit) {
 
   # Calculate current status if biomass results are available
   current_status <- NULL
-  if ("biomass" %in% names(model_fit@results) && length(model_fit@results$biomass) > 0) {
-    current_biomass <- tail(model_fit@results$biomass, 1) # Final year biomass
+  if ("biomass" %in% names(model_fit$results) && length(model_fit$results$biomass) > 0) {
+    current_biomass <- tail(model_fit$results$biomass, 1) # Final year biomass
 
     # Calculate status ratios
     b_bmsy_ratio <- current_biomass / bmsy
@@ -137,8 +137,8 @@ calculate_reference_points <- function(model_fit) {
     )
 
     # Calculate current harvest rate if available
-    if ("harvest_rate" %in% names(model_fit@results)) {
-      current_harvest_rate <- tail(model_fit@results$harvest_rate, 1)
+    if ("harvest_rate" %in% names(model_fit$results)) {
+      current_harvest_rate <- tail(model_fit$results$harvest_rate, 1)
       f_fmsy_ratio <- current_harvest_rate / fmsy
 
       # Add harvest rate status
@@ -167,9 +167,9 @@ calculate_reference_points <- function(model_fit) {
 
   # Add special case identification
   if (abs(m - 1) < 1e-6) {
-    reference_points$special_case <- "Fox model (m ≈ 1)"
+    reference_points$special_case <- "Fox model (m ~ 1)"
   } else if (abs(m - 2) < 1e-6) {
-    reference_points$special_case <- "Schaefer model (m ≈ 2)"
+    reference_points$special_case <- "Schaefer model (m ~ 2)"
   } else {
     reference_points$special_case <- "General Pella-Tomlinson model"
   }
@@ -188,6 +188,7 @@ calculate_reference_points <- function(model_fit) {
 #'
 #' @return Invisibly returns the object
 #'
+#' @method print pt_reference_points
 #' @export
 print.pt_reference_points <- function(x, ...) {
   cat("Pella-Tomlinson Reference Points\n")
@@ -249,17 +250,17 @@ estimate_biomass <- function(model_fit, years = NULL) {
     stop("model_fit must be a ProductionModel object")
   }
 
-  if (!model_fit@fitted) {
+  if (!model_fit$fitted) {
     stop("Model must be fitted before extracting biomass estimates")
   }
 
-  if (!"biomass" %in% names(model_fit@results)) {
+  if (!"biomass" %in% names(model_fit$results)) {
     stop("No biomass estimates found in fitted model")
   }
 
   # Extract data
-  model_years <- model_fit@data$years
-  biomass_values <- model_fit@results$biomass
+  model_years <- model_fit$data$years
+  biomass_values <- model_fit$results$biomass
 
   # Create results matrix
   results <- data.frame(
@@ -268,8 +269,8 @@ estimate_biomass <- function(model_fit, years = NULL) {
   )
 
   # Add harvest rates if available
-  if ("harvest_rate" %in% names(model_fit@results)) {
-    results$harvest_rate <- model_fit@results$harvest_rate
+  if ("harvest_rate" %in% names(model_fit$results)) {
+    results$harvest_rate <- model_fit$results$harvest_rate
   }
 
   # Filter to requested years if specified

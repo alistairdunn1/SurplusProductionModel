@@ -1,6 +1,6 @@
-#' Generic Functions for Production Model Package
+#' S3 Generic Functions for Production Model Package
 #'
-#' This file contains generic function definitions for methods used with
+#' This file contains S3 generic function definitions for methods used with
 #' ProductionModel objects.
 #'
 #' @name generics
@@ -14,7 +14,7 @@ NULL
 #' @param ... Additional arguments passed to methods
 #' @return Parameter values
 #' @export
-setGeneric("parameters", function(object, ...) standardGeneric("parameters"))
+parameters <- function(object, ...) UseMethod("parameters")
 
 #' Extract Model Results
 #'
@@ -24,7 +24,7 @@ setGeneric("parameters", function(object, ...) standardGeneric("parameters"))
 #' @param ... Additional arguments passed to methods
 #' @return Model results
 #' @export
-setGeneric("results", function(object, ...) standardGeneric("results"))
+results <- function(object, ...) UseMethod("results")
 
 #' Extract Model Data
 #'
@@ -34,17 +34,4 @@ setGeneric("results", function(object, ...) standardGeneric("results"))
 #' @param ... Additional arguments passed to methods
 #' @return Model data
 #' @export
-setGeneric("model_data", function(object, ...) standardGeneric("model_data"))
-
-#' Check Model Fitted Status
-#'
-#' Generic function to check if a model has been fitted.
-#' Note: This creates a generic for the base R 'fitted' function.
-#'
-#' @param object A model object
-#' @param ... Additional arguments passed to methods
-#' @return Logical indicating fitted status
-#' @export
-if (!isGeneric("fitted")) {
-  setGeneric("fitted", function(object, ...) standardGeneric("fitted"))
-}
+model_data <- function(object, ...) UseMethod("model_data")

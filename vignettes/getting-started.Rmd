@@ -1,0 +1,252 @@
+---
+title: "Getting Started with SurplusProductionModel"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with SurplusProductionModel}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+## Introduction
+
+The **SurplusProductionModel** package fits Pella-Tomlinson surplus production
+models to fishery catch and abundance index (CPUE) data using maximum likelihood
+estimation. It is designed for stock assessment of Antarctic toothfish
+(*Dissostichus mawsoni*) in the Ross Sea but is applicable to any species where
+biomass dynamics are well described by a surplus production model.
+
+The Pella-Tomlinson model generalises the classic Schaefer model by adding a
+shape parameter *m* that controls the location of maximum sustainable yield
+(MSY) relative to carrying capacity *K*.
+
+Key capabilities:
+- Fit single-area or multi-area models
+- Accommodate multiple CPUE indices (e.g. longline and trawl survey)
+- Fix or constrain parameters for improved identifiability
+- Calculate biological reference points (MSY, B~MSY~, F~MSY~)
+- Diagnostic plotting of biomass trajectories, CPUE fits, and residuals
+
+## Installation
+
+```r
+# Install the development version from GitHub
+# install.packages("devtools")
+devtools::install_github("alistairdunn1/SurplusProductionModel")
+```
+
+## Example Data
+
+The package ships with simulated data loosely based on the Ross Sea Antarctic
+toothfish fishery. These are generated from known parameters, so you can
+compare the model estimates with the truth.
+
+```{r load-package}
+library(SurplusProductionModel)
+```
+
+```{r load-data}
+data(ross_sea_catch)
+data(ross_sea_cpue_simple)
+data(ross_sea_true_params)
+data(ross_sea_true_biomass)
+```
+
+The catch data cover 1997--2024 and contain annual catches in tonnes. The
+trajectory includes a development phase, peak exploitation, and a catch
+reduction period that allows partial stock recovery:
+
+```{r show-catch}
+head(ross_sea_catch)
+```
+
+The single-index CPUE data provide a longline abundance index from 1998
+onward:
+
+```{r show-cpue}
+head(ross_sea_cpue_simple)
+```
+
+Let's visualise the input data:
+
+```{r plot-inputs, fig.height = 4}
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+plot(ross_sea_catch$year, ross_sea_catch$catch, type = "b", pch = 16,
+     xlab = "Year", ylab = "Catch (t)", main = "Catch History")
+plot(ross_sea_cpue_simple$year, ross_sea_cpue_simple$cpue, type = "b", pch = 16,
+     xlab = "Year", ylab = "CPUE (kg/hook)", main = "Longline CPUE")
+```
+
+## Fitting a Model
+
+Prepare the data as a list with `cpue_data` and `catch_data` elements, then
+call `fit_pella_tomlinson_model()`.
+
+In surplus production models, the shape parameter *m* is typically poorly
+identified from CPUE data alone. Standard practice is to fix *m* (e.g.
+*m* = 2 for the classic Schaefer model) using the `fixed_params` option:
+
+```{r fit-model, warning = FALSE}
+model_data <- list(
+  cpue_data  = ross_sea_cpue_simple,
+  catch_data = ross_sea_catch
+)
+
+fit <- fit_pella_tomlinson_model(
+  data    = model_data,
+  options = list(
+    fixed_params = list(log_m = log(2)),
+    control = list(eval.max = 5000, iter.max = 2000)
+  )
+)
+```
+
+The returned object is an S4 `ProductionModel` that summarises fit quality
+and estimated parameters:
+
+```{r print-model}
+print(fit)
+```
+
+The estimated natural-scale parameters:
+
+```{r show-params}
+fitted_params <- fit$results$parameters
+cat(sprintf("  r         = %.4f  (intrinsic growth rate)\n", fitted_params["r"]))
+cat(sprintf("  K         = %.0f  (carrying capacity, t)\n",  fitted_params["K"]))
+cat(sprintf("  m         = %.1f    (shape, fixed)\n",        fitted_params["m"]))
+cat(sprintf("  sigma_obs = %.3f  (observation error SD)\n",  fitted_params["sigma_obs"]))
+cat(sprintf("  q         = %.6f  (catchability)\n",          fitted_params["q"]))
+cat(sprintf("  B0        = %.0f  (initial biomass, t)\n",    fitted_params["B0"]))
+```
+
+## Reference Points
+
+Calculate biological reference points from the fitted model with
+`calculate_reference_points()`:
+
+```{r ref-points}
+rp <- calculate_reference_points(fit)
+print(rp)
+```
+
+## Comparing to Truth
+
+Because this dataset was generated with known parameters, we can compare the
+model estimates with the true values stored in `ross_sea_true_params`:
+
+```{r compare-params}
+true <- ross_sea_true_params
+
+cat(sprintf("Parameter  %10s  %10s\n", "True", "Estimated"))
+cat(sprintf("r          %10.4f  %10.4f\n", true$r,    fitted_params["r"]))
+cat(sprintf("K          %10.0f  %10.0f\n", true$K,    fitted_params["K"]))
+cat(sprintf("m          %10.2f  %10.2f\n", true$m,    fitted_params["m"]))
+cat(sprintf("q          %10.6f  %10.6f\n", true$q_LL, fitted_params["q"]))
+cat(sprintf("B0         %10.0f  %10.0f\n", true$B0,   fitted_params["B0"]))
+```
+
+Note that exact recovery of the generating parameters is not expected from
+maximum likelihood estimation with a finite, noisy dataset. In particular,
+surplus production models are known to have ridges in the likelihood surface
+where different combinations of *r*, *K*, and *B*~0~ produce similar fits.
+Bayesian methods with informative priors are commonly used to address this
+identifiability issue in practice.
+
+We can overlay the estimated biomass trajectory on the true trajectory:
+
+```{r compare-biomass, fig.height = 4}
+est_biomass <- fit$results$biomass
+years <- fit$data$years
+
+plot(ross_sea_true_biomass$year, ross_sea_true_biomass$biomass,
+     type = "l", lwd = 2, col = "grey40",
+     xlab = "Year", ylab = "Biomass (t)",
+     main = "Estimated vs True Biomass",
+     ylim = range(c(ross_sea_true_biomass$biomass, est_biomass), na.rm = TRUE))
+lines(years, est_biomass, col = "#0072B2", lwd = 2, lty = 2)
+legend("topright", legend = c("True", "Estimated"),
+       col = c("grey40", "#0072B2"), lwd = 2, lty = c(1, 2))
+```
+
+## Diagnostic Plots
+
+The `plot_model_fit()` function produces four diagnostic panels: biomass
+trajectory, observed vs fitted CPUE, residuals, and harvest rate.
+
+```{r diagnostics, fig.height = 8, fig.width = 7, results = "hide", message = FALSE}
+plots <- plot_model_fit(fit, which = "all")
+```
+
+## Fitting with Multiple CPUE Indices
+
+The package also supports multiple abundance indices. The `ross_sea_cpue`
+dataset contains both longline and trawl survey CPUE:
+
+```{r multi-index}
+data(ross_sea_cpue)
+head(ross_sea_cpue)
+table(ross_sea_cpue$label)
+```
+
+To use both indices, simply pass the multi-index data frame. Each index
+receives its own estimated catchability *q*, while sharing the underlying
+population dynamics parameters.
+
+```{r fit-multi, eval = FALSE}
+multi_data <- list(
+  cpue_data  = ross_sea_cpue,
+  catch_data = ross_sea_catch
+)
+
+fit_multi <- fit_pella_tomlinson_model(
+  data    = multi_data,
+  options = list(
+    fixed_params = list(log_m = log(2)),
+    control = list(eval.max = 5000, iter.max = 2000)
+  )
+)
+
+print(fit_multi)
+```
+
+## Model Formulation
+
+The Pella-Tomlinson surplus production model used in this package is:
+
+**Production function:**
+
+$$P(B) = \frac{r \, B}{m} \left[ 1 - \left(\frac{B}{K}\right)^{m-1} \right]$$
+
+**State equation (biomass dynamics):**
+
+$$B_{t+1} = B_t + P(B_t) - C_t + \varepsilon_t, \quad \varepsilon_t \sim N(0, \sigma^2_{\text{proc}})$$
+
+**Observation equation:**
+
+$$\text{CPUE}_t = q \, B_t \, e^{\eta_t}, \quad \eta_t \sim N(0, \sigma^2_{\text{obs}})$$
+
+Special cases:
+
+- **Schaefer model** ($m = 2$): $B_{\text{MSY}} = K/2$
+- **Fox model** ($m \to 1$): $B_{\text{MSY}} = K/e$
+
+## Next Steps
+
+- Explore multi-area spatial models by adding an `area` column to your data
+- Examine sensitivity to the shape parameter *m*
+- Compare AIC/BIC across models with different structures
+- Use `validate_cpue_data()` and `validate_catch_data()` to check data quality
+  before fitting
+
+```{r session-info}
+sessionInfo()
+```

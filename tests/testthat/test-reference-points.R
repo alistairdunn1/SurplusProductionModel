@@ -18,8 +18,8 @@ test_that("calculate_reference_points input validation works", {
 
   # Create fitted model with missing parameters
   fitted_model <- unfitted_model
-  fitted_model@fitted <- TRUE
-  fitted_model@parameters <- c(r = 0.3, K = 5000) # Missing 'm'
+  fitted_model$fitted <- TRUE
+  fitted_model$parameters <- c(r = 0.3, K = 5000) # Missing 'm'
 
   expect_error(
     calculate_reference_points(fitted_model),
@@ -36,10 +36,10 @@ test_that("calculate_reference_points works for Schaefer model", {
     effort = rep(1000 / 1.5, 6),
     parameters = c(r = 0.3, K = 5000, m = 2.0, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
-  fitted_model@fitted <- TRUE
+  fitted_model$fitted <- TRUE
 
   # Add biomass results for current status calculation
-  fitted_model@results <- list(
+  fitted_model$results <- list(
     biomass = c(4000, 3800, 3600, 3400, 3200, 3000),
     harvest_rate = rep(0.25, 6)
   )
@@ -64,7 +64,7 @@ test_that("calculate_reference_points works for Schaefer model", {
   expect_equal(ref_points$fmsy, expected_fmsy, tolerance = 1e-10)
 
   # Check special case identification
-  expect_equal(ref_points$special_case, "Schaefer model (m ≈ 2)")
+  expect_equal(ref_points$special_case, "Schaefer model (m ~ 2)")
 
   # Check current status
   expect_true(!is.null(ref_points$current_status))
@@ -81,7 +81,7 @@ test_that("calculate_reference_points works for Fox model", {
     effort = rep(1000 / 1.5, 6),
     parameters = c(r = 0.3, K = 5000, m = 1.0, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
-  fitted_model@fitted <- TRUE
+  fitted_model$fitted <- TRUE
 
   # Calculate reference points
   ref_points <- calculate_reference_points(fitted_model)
@@ -98,7 +98,7 @@ test_that("calculate_reference_points works for Fox model", {
   expect_equal(ref_points$fmsy, expected_fmsy, tolerance = 1e-10)
 
   # Check special case identification
-  expect_equal(ref_points$special_case, "Fox model (m ≈ 1)")
+  expect_equal(ref_points$special_case, "Fox model (m ~ 1)")
 })
 
 test_that("calculate_reference_points works for general Pella-Tomlinson model", {
@@ -110,7 +110,7 @@ test_that("calculate_reference_points works for general Pella-Tomlinson model", 
     effort = rep(1000 / 1.5, 6),
     parameters = c(r = 0.3, K = 5000, m = 3.0, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
-  fitted_model@fitted <- TRUE
+  fitted_model$fitted <- TRUE
 
   # Calculate reference points
   ref_points <- calculate_reference_points(fitted_model)
@@ -140,7 +140,7 @@ test_that("calculate_reference_points handles edge cases", {
     effort = rep(1000 / 1.5, 6),
     parameters = c(r = 0.3, K = 5000, m = 0.5, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
-  fitted_model@fitted <- TRUE
+  fitted_model$fitted <- TRUE
 
   # Should give warning and use Schaefer approximation
   expect_warning(ref_points <- calculate_reference_points(fitted_model))
@@ -150,7 +150,7 @@ test_that("calculate_reference_points handles edge cases", {
   expect_equal(ref_points$bmsy, 5000 / 2)
 
   # Test negative parameter values
-  fitted_model@parameters["r"] <- -0.3
+  fitted_model$parameters["r"] <- -0.3
   expect_error(calculate_reference_points(fitted_model), "must be positive")
 })
 
@@ -163,11 +163,11 @@ test_that("calculate_reference_points current status calculations work", {
     effort = rep(1500, 6),
     parameters = c(r = 0.3, K = 5000, m = 2.0, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
-  fitted_model@fitted <- TRUE
+  fitted_model$fitted <- TRUE
 
   # Add biomass trajectory showing decline to below BMSY
   bmsy <- 2500 # K/2 for Schaefer
-  fitted_model@results <- list(
+  fitted_model$results <- list(
     biomass = c(3000, 2800, 2600, 2400, 2200, 1800), # Declining to below BMSY
     harvest_rate = c(0.5, 0.54, 0.58, 0.62, 0.68, 0.83) # Increasing harvest rate
   )
@@ -186,13 +186,13 @@ test_that("calculate_reference_points current status calculations work", {
   expect_equal(ref_points$current_status$harvest_status, "Overfishing occurring")
 
   # Test overfished status
-  fitted_model@results$biomass[6] <- 1000 # Below half BMSY
+  fitted_model$results$biomass[6] <- 1000 # Below half BMSY
   ref_points2 <- calculate_reference_points(fitted_model)
   expect_equal(ref_points2$current_status$status, "Below half BMSY (overfished)")
 
   # Test above BMSY status
-  fitted_model@results$biomass[6] <- 3000 # Above BMSY
-  fitted_model@results$harvest_rate[6] <- 0.1 # Low harvest rate
+  fitted_model$results$biomass[6] <- 3000 # Above BMSY
+  fitted_model$results$harvest_rate[6] <- 0.1 # Low harvest rate
   ref_points3 <- calculate_reference_points(fitted_model)
   expect_equal(ref_points3$current_status$status, "Above BMSY")
   expect_equal(ref_points3$current_status$harvest_status, "No overfishing")
@@ -234,8 +234,8 @@ test_that("estimate_biomass function works correctly", {
     cpue = rep(1.5, 6),
     effort = rep(1000 / 1.5, 6)
   )
-  fitted_model@fitted <- TRUE
-  fitted_model@results <- list(
+  fitted_model$fitted <- TRUE
+  fitted_model$results <- list(
     biomass = c(4000, 3800, 3600, 3400, 3200, 3000),
     harvest_rate = c(0.25, 0.26, 0.28, 0.29, 0.31, 0.33)
   )
@@ -260,12 +260,12 @@ test_that("estimate_biomass function works correctly", {
 
   # Test error conditions
   unfitted_model <- fitted_model
-  unfitted_model@fitted <- FALSE
+  unfitted_model$fitted <- FALSE
   expect_error(estimate_biomass(unfitted_model))
 
   # Test no biomass results
   no_biomass_model <- fitted_model
-  no_biomass_model@results <- list(other = "stuff")
+  no_biomass_model$results <- list(other = "stuff")
   expect_error(estimate_biomass(no_biomass_model))
 
   # Test years not available

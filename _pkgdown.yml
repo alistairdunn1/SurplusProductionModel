@@ -1,0 +1,59 @@
+url: https://alistairdunn1.github.io/SurplusProductionModel/
+
+template:
+  bootstrap: 5
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, news]
+    right: [search, github]
+  components:
+    github:
+      icon: fa-github
+      href: https://github.com/alistairdunn1/SurplusProductionModel
+
+reference:
+  - title: Model Fitting
+    desc: Core functions for fitting surplus production models
+    contents:
+      - fit_pella_tomlinson_model
+      - pella_tomlinson_production
+
+  - title: Reference Points
+    desc: Biological reference point calculation
+    contents:
+      - calculate_reference_points
+      - estimate_biomass
+
+  - title: Diagnostics
+    desc: Model diagnostics and visualisation
+    contents:
+      - plot_model_fit
+
+  - title: Data Validation
+    desc: Input data validation functions
+    contents:
+      - validate_cpue_data
+      - validate_catch_data
+      - validate_pt_parameters
+      - detect_outliers
+
+  - title: Classes
+    desc: S4 class system
+    contents:
+      - ProductionModel-class
+      - ProductionModel
+
+  - title: Example Data
+    desc: Simulated Ross Sea toothfish datasets
+    contents:
+      - ross_sea_catch
+      - ross_sea_cpue
+      - ross_sea_cpue_simple
+      - ross_sea_true_params
+      - ross_sea_true_biomass
+
+articles:
+  - title: Getting Started
+    contents:
+      - getting-started

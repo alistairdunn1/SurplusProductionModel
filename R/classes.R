@@ -1,243 +1,212 @@
-#' S4 Class Definitions for Surplus Production Model
+#' Validation for ProductionModel Objects
 #'
-#' This file contains the core S4 class definitions for the surplus production
-#' model package, including the main ProductionModel class and associated
-#' validation functions.
+#' This file contains the validation function for ProductionModel S3 objects.
+#' A ProductionModel is a named list with class \code{"ProductionModel"}
+#' containing the following elements:
 #'
-#' @include generics.R
+#' \describe{
+#'   \item{parameters}{A named numeric vector of model parameters (r, K, m, q, sigma_proc, sigma_obs, and optionally B0).
+#'     For multi-area/index models, parameters may include q.<area>, q.<area>.<label>, or B0.<area>.}
+#'   \item{data}{A list containing model data (years, catch, cpue, effort).}
+#'   \item{results}{A list containing model fitting results (empty until fitted).}
+#'   \item{fitted}{Logical indicating whether the model has been fitted.}
+#'   \item{model_type}{Character string identifying the model type (\code{"pella_tomlinson"}).}
+#'   \item{creation_date}{POSIXct timestamp of object creation.}
+#' }
+#'
 #' @name classes
 NULL
 
-#' Production Model S4 Class
+#' Validate a ProductionModel Object
 #'
-#' An S4 class to represent a Pella-Tomlinson surplus production model for
-#' Antarctic toothfish stock assessment.
+#' Checks that a ProductionModel list has the correct structure and that all
+#' values satisfy the required constraints.
 #'
-#' @slot parameters A named numeric vector containing model parameters:
-#'   \describe{
-#'     \item{r}{Intrinsic growth rate (per year)}
-#'     \item{K}{Carrying capacity (tonnes)}
-#'     \item{m}{Pella-Tomlinson shape parameter (dimensionless)}
-#'     \item{q}{Catchability coefficient (per unit effort)}
-#'     \item{sigma_proc}{Process error standard deviation}
-#'     \item{sigma_obs}{Observation error standard deviation}
-#'   }
-#' @slot data A list containing model data:
-#'   \describe{
-#'     \item{years}{Integer vector of years}
-#'     \item{catch}{Numeric vector of catch data (tonnes)}
-#'     \item{cpue}{Numeric vector of CPUE index data}
-#'     \item{effort}{Numeric vector of fishing effort data}
-#'   }
-#' @slot results A list containing model fitting results (empty until fitted):
-#'   \describe{
-#'     \item{biomass}{Estimated biomass trajectory}
-#'     \item{harvest_rate}{Estimated harvest rates}
-#'     \item{msy}{Maximum sustainable yield estimate}
-#'     \item{bmsy}{Biomass at MSY}
-#'     \item{convergence}{Model convergence status}
-#'     \item{likelihood}{Negative log-likelihood value}
-#'   }
-#' @slot fitted A logical indicating whether the model has been fitted
-#' @slot model_type A character string identifying the model type ("pella_tomlinson")
-#' @slot creation_date A POSIXct timestamp of when the object was created
-#'
-#' @examples
-#' \dontrun{
-#' # Create example data
-#' years <- 2000:2020
-#' catch <- rnorm(length(years), 1000, 100)
-#' cpue <- exp(rnorm(length(years), log(1.5), 0.3))
-#' effort <- catch / cpue
-#'
-#' # Create model object
-#' model <- ProductionModel(
-#'   years = years,
-#'   catch = catch,
-#'   cpue = cpue,
-#'   effort = effort
-#' )
-#' }
-#'
+#' @param x A ProductionModel object (list)
+#' @return \code{TRUE} invisibly if valid; otherwise throws an error describing
+#'   all validation failures.
 #' @export
-setClass(
-  "ProductionModel",
-  slots = c(
-    parameters = "numeric",
-    data = "list",
-    results = "list",
-    fitted = "logical",
-    model_type = "character",
-    creation_date = "POSIXct"
-  ),
-  prototype = list(
-    parameters = numeric(0),
-    data = list(),
-    results = list(),
-    fitted = FALSE,
-    model_type = "pella_tomlinson",
-    creation_date = Sys.time()
-  ),
-  validity = function(object) {
-    errors <- character(0)
+validate_ProductionModel <- function(x) {
+  errors <- character(0)
 
-    # Validate model_type
-    if (!identical(object@model_type, "pella_tomlinson")) {
-      errors <- c(errors, "model_type must be 'pella_tomlinson'")
-    }
+  # ---- top-level structure ----
+  required_fields <- c("parameters", "data", "results", "fitted", "model_type", "creation_date")
+  missing_fields <- setdiff(required_fields, names(x))
+  if (length(missing_fields) > 0) {
+    errors <- c(errors, paste("Missing required fields:", paste(missing_fields, collapse = ", ")))
+  }
 
-    # Validate fitted status
-    if (!is.logical(object@fitted) || length(object@fitted) != 1) {
+  # ---- model_type ----
+  if ("model_type" %in% names(x) && !identical(x$model_type, "pella_tomlinson")) {
+    errors <- c(errors, "model_type must be 'pella_tomlinson'")
+  }
+
+  # ---- fitted ----
+  if ("fitted" %in% names(x)) {
+    if (!is.logical(x$fitted) || length(x$fitted) != 1) {
       errors <- c(errors, "fitted must be a single logical value")
     }
+  }
 
-    # Validate creation_date
-    if (!inherits(object@creation_date, "POSIXct") || length(object@creation_date) != 1) {
+  # ---- creation_date ----
+  if ("creation_date" %in% names(x)) {
+    if (!inherits(x$creation_date, "POSIXct") || length(x$creation_date) != 1) {
       errors <- c(errors, "creation_date must be a single POSIXct value")
     }
+  }
 
-    # Validate parameters if present
-    if (length(object@parameters) > 0) {
-      required_params <- c("r", "K", "m", "q", "sigma_proc", "sigma_obs")
-      optional_params <- c("B0", "sigma_process", "sigma_obs") # Alternative names and optional parameters
-      allowed_params <- c(required_params, optional_params)
-      param_names <- names(object@parameters)
+  # ---- parameters ----
+  if ("parameters" %in% names(x) && length(x$parameters) > 0) {
+    core_required <- c("r", "K", "m", "sigma_obs")
+    optional_params <- c("q", "sigma_proc", "sigma_process", "B0")
+    param_names <- names(x$parameters)
 
-      if (is.null(param_names)) {
-        errors <- c(errors, "parameters must have names")
-      } else {
-        missing_params <- setdiff(required_params, param_names)
-        if (length(missing_params) > 0) {
-          errors <- c(errors, paste(
-            "Missing required parameters:",
-            paste(missing_params, collapse = ", ")
-          ))
-        }
-
-        extra_params <- setdiff(param_names, allowed_params)
-        if (length(extra_params) > 0) {
-          errors <- c(errors, paste(
-            "Unknown parameters:",
-            paste(extra_params, collapse = ", ")
-          ))
-        }
+    if (is.null(param_names)) {
+      errors <- c(errors, "parameters must have names")
+    } else {
+      missing_core <- setdiff(core_required, param_names)
+      if (length(missing_core) > 0) {
+        errors <- c(errors, paste("Missing required parameters:", paste(missing_core, collapse = ", ")))
       }
 
-      # Validate parameter values
-      if ("r" %in% names(object@parameters)) {
-        if (!is.finite(object@parameters["r"]) || object@parameters["r"] <= 0) {
-          errors <- c(errors, "Parameter 'r' must be positive and finite")
-        }
+      is_q_like <- grepl("^q(\\.|$)", param_names)
+      is_b0_like <- grepl("^B0(\\.|$)", param_names)
+
+      if (!any(is_q_like)) {
+        errors <- c(errors, "At least one catchability parameter 'q' or 'q.<area>[.<label>]' must be provided")
       }
 
-      if ("K" %in% names(object@parameters)) {
-        if (!is.finite(object@parameters["K"]) || object@parameters["K"] <= 0) {
-          errors <- c(errors, "Parameter 'K' must be positive and finite")
-        }
-      }
-
-      if ("m" %in% names(object@parameters)) {
-        if (!is.finite(object@parameters["m"]) || object@parameters["m"] <= 0) {
-          errors <- c(errors, "Parameter 'm' must be positive and finite")
-        }
-      }
-
-      if ("q" %in% names(object@parameters)) {
-        if (!is.finite(object@parameters["q"]) || object@parameters["q"] <= 0) {
-          errors <- c(errors, "Parameter 'q' must be positive and finite")
-        }
-      }
-
-      if ("sigma_proc" %in% names(object@parameters)) {
-        if (!is.finite(object@parameters["sigma_proc"]) || object@parameters["sigma_proc"] <= 0) {
-          errors <- c(errors, "Parameter 'sigma_proc' must be positive and finite")
-        }
-      }
-
-      if ("sigma_obs" %in% names(object@parameters)) {
-        if (!is.finite(object@parameters["sigma_obs"]) || object@parameters["sigma_obs"] <= 0) {
-          errors <- c(errors, "Parameter 'sigma_obs' must be positive and finite")
-        }
+      allowed_core <- c(core_required, optional_params)
+      extra_params <- param_names[!(param_names %in% allowed_core | is_q_like | is_b0_like)]
+      if (length(extra_params) > 0) {
+        errors <- c(errors, paste("Unknown parameters:", paste(extra_params, collapse = ", ")))
       }
     }
 
-    # Validate data if present
-    if (length(object@data) > 0) {
-      required_data <- c("years", "catch", "cpue", "effort")
-      data_names <- names(object@data)
+    # Individual parameter constraints
+    if ("r" %in% names(x$parameters)) {
+      if (!is.finite(x$parameters["r"]) || x$parameters["r"] <= 0) {
+        errors <- c(errors, "Parameter 'r' must be positive and finite")
+      }
+    }
+    if ("K" %in% names(x$parameters)) {
+      if (!is.finite(x$parameters["K"]) || x$parameters["K"] <= 0) {
+        errors <- c(errors, "Parameter 'K' must be positive and finite")
+      }
+    }
+    if ("m" %in% names(x$parameters)) {
+      if (!is.finite(x$parameters["m"]) || x$parameters["m"] <= 0) {
+        errors <- c(errors, "Parameter 'm' must be positive and finite")
+      }
+    }
 
-      if (is.null(data_names)) {
-        errors <- c(errors, "data must have names")
-      } else {
-        missing_data <- setdiff(required_data, data_names)
-        if (length(missing_data) > 0) {
-          errors <- c(errors, paste(
-            "Missing required data elements:",
-            paste(missing_data, collapse = ", ")
-          ))
-        }
+    q_like_idx <- grepl("^q(\\.|$)", names(x$parameters))
+    if (any(q_like_idx)) {
+      q_vals <- x$parameters[q_like_idx]
+      if (any(!is.finite(q_vals) | q_vals <= 0)) {
+        errors <- c(errors, "All catchability parameters 'q*' must be positive and finite")
+      }
+    }
+
+    if ("sigma_proc" %in% names(x$parameters)) {
+      if (!is.finite(x$parameters["sigma_proc"]) || x$parameters["sigma_proc"] <= 0) {
+        errors <- c(errors, "Parameter 'sigma_proc' must be positive and finite")
+      }
+    }
+    if ("sigma_process" %in% names(x$parameters)) {
+      if (!is.finite(x$parameters["sigma_process"]) || x$parameters["sigma_process"] <= 0) {
+        errors <- c(errors, "Parameter 'sigma_process' must be positive and finite")
+      }
+    }
+    if ("sigma_obs" %in% names(x$parameters)) {
+      if (!is.finite(x$parameters["sigma_obs"]) || x$parameters["sigma_obs"] <= 0) {
+        errors <- c(errors, "Parameter 'sigma_obs' must be positive and finite")
+      }
+    }
+
+    b0_like_idx <- grepl("^B0(\\.|$)", names(x$parameters))
+    if (any(b0_like_idx)) {
+      b0_vals <- x$parameters[b0_like_idx]
+      if (any(!is.finite(b0_vals) | b0_vals <= 0)) {
+        errors <- c(errors, "All initial biomass parameters 'B0*' must be positive and finite")
+      }
+    }
+  }
+
+  # ---- data ----
+  if ("data" %in% names(x) && length(x$data) > 0) {
+    required_data <- c("years", "catch", "cpue", "effort")
+    data_names <- names(x$data)
+
+    if (is.null(data_names)) {
+      errors <- c(errors, "data must have names")
+    } else {
+      missing_data <- setdiff(required_data, data_names)
+      if (length(missing_data) > 0) {
+        errors <- c(errors, paste("Missing required data elements:", paste(missing_data, collapse = ", ")))
+      }
+    }
+
+    if (all(required_data %in% names(x$data))) {
+      n_years <- length(x$data$years)
+
+      if (!is.integer(x$data$years) && !all(x$data$years == as.integer(x$data$years))) {
+        errors <- c(errors, "years must be integers")
+      }
+      if (any(diff(x$data$years) <= 0)) {
+        errors <- c(errors, "years must be in strictly increasing order")
       }
 
-      # Validate data consistency
-      if (all(required_data %in% names(object@data))) {
-        n_years <- length(object@data$years)
+      first_dim_len <- function(v) {
+        if (is.null(dim(v))) length(v) else dim(v)[1]
+      }
 
-        if (length(object@data$catch) != n_years) {
-          errors <- c(errors, "catch data length must match years length")
-        }
+      if (first_dim_len(x$data$catch) != n_years) {
+        errors <- c(errors, "catch must be a vector of length years or have first dimension equal to years")
+      }
+      if (!is.numeric(x$data$catch) || any(!is.finite(c(x$data$catch))) || any(c(x$data$catch) < 0, na.rm = TRUE)) {
+        errors <- c(errors, "catch data must be non-negative finite numbers")
+      }
 
-        if (length(object@data$cpue) != n_years) {
-          errors <- c(errors, "cpue data length must match years length")
-        }
-
-        if (length(object@data$effort) != n_years) {
-          errors <- c(errors, "effort data length must match years length")
-        }
-
-        # Validate years
-        if (!is.integer(object@data$years) && !all(object@data$years == as.integer(object@data$years))) {
-          errors <- c(errors, "years must be integers")
-        }
-
-        if (any(diff(object@data$years) <= 0)) {
-          errors <- c(errors, "years must be in strictly increasing order")
-        }
-
-        # Validate catch data
-        if (!is.numeric(object@data$catch) || any(!is.finite(object@data$catch)) || any(object@data$catch < 0)) {
-          errors <- c(errors, "catch data must be non-negative finite numbers")
-        }
-
-        # Validate CPUE data
-        if (!is.numeric(object@data$cpue) || any(!is.finite(object@data$cpue)) || any(object@data$cpue <= 0)) {
+      if (first_dim_len(x$data$cpue) != n_years) {
+        errors <- c(errors, "cpue must be a vector/matrix/array with first dimension equal to years")
+      }
+      if (!is.numeric(x$data$cpue)) {
+        errors <- c(errors, "cpue must be numeric")
+      } else {
+        cpue_vals <- c(x$data$cpue)
+        if (any(!is.na(cpue_vals) & (!is.finite(cpue_vals) | cpue_vals <= 0))) {
           errors <- c(errors, "cpue data must be positive finite numbers")
         }
-
-        # Validate effort data
-        if (!is.numeric(object@data$effort) || any(!is.finite(object@data$effort)) || any(object@data$effort <= 0)) {
-          errors <- c(errors, "effort data must be positive finite numbers")
-        }
       }
-    }
 
-    # Validate results if fitted
-    if (length(object@fitted) == 1 && object@fitted) {
-      if (length(object@results) == 0) {
-        errors <- c(errors, "results must be present when fitted = TRUE")
+      if (first_dim_len(x$data$effort) != n_years) {
+        errors <- c(errors, "effort must be a vector/matrix with first dimension equal to years")
+      }
+      if (!is.numeric(x$data$effort)) {
+        errors <- c(errors, "effort must be numeric")
       } else {
-        required_results <- c("biomass", "harvest_rate", "msy", "bmsy", "convergence", "likelihood")
-        result_names <- names(object@results)
-
-        missing_results <- setdiff(required_results, result_names)
-        if (length(missing_results) > 0) {
-          errors <- c(errors, paste(
-            "Missing required results when fitted:",
-            paste(missing_results, collapse = ", ")
-          ))
+        eff_vals <- c(x$data$effort)
+        if (any(!is.na(eff_vals) & (!is.finite(eff_vals) | eff_vals <= 0))) {
+          errors <- c(errors, "effort values must be positive and finite where present")
         }
       }
     }
-
-    if (length(errors) == 0) TRUE else errors
   }
-)
+
+  # ---- results when fitted ----
+  if ("fitted" %in% names(x) && isTRUE(x$fitted)) {
+    if (length(x$results) == 0) {
+      errors <- c(errors, "results must be present when fitted = TRUE")
+    } else {
+      required_results <- c("biomass", "harvest_rate", "msy", "bmsy", "convergence", "likelihood")
+      missing_results <- setdiff(required_results, names(x$results))
+      if (length(missing_results) > 0) {
+        errors <- c(errors, paste("Missing required results when fitted:", paste(missing_results, collapse = ", ")))
+      }
+    }
+  }
+
+  if (length(errors) > 0) stop(paste(errors, collapse = "\n"))
+  invisible(TRUE)
+}

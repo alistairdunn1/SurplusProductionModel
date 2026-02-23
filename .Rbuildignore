@@ -1,43 +1,59 @@
 # Ignore development files
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
+^\.Rproj\.user$
+^\.Rhistory$
+^\.RData$
+^\.Ruserdata$
 
 # Ignore build files
-*.tar.gz
-*.zip
+.*\.tar\.gz$
+.*\.zip$
 
 # Ignore temporary files
-.DS_Store
-Thumbs.db
+^\.DS_Store$
+^Thumbs\.db$
 
 # Ignore development directories
-docs/
-dev/
-scratch/
+^docs$
+^dev$
+^scratch$
 
 # Ignore package building artifacts
-*.Rcheck/
-*.cache
-vignettes/*.html
-vignettes/*.R
+.*\.Rcheck$
+.*\.cache$
+^vignettes/.*\.html$
+^vignettes/.*\.R$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
 
 # Ignore IDE files
-.vscode/
-*.Rproj
+^\.vscode$
+.*\.Rproj$
 
 # Ignore OS files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+^\.DS_Store$
+^\.Spotlight-V100$
+^\.Trashes$
+^ehthumbs\.db$
 
 # Ignore profiling output
-*.prof
+.*\.prof$
 
 # Ignore coverage reports
-coverage.xml
+^coverage\.xml$
+
+# Ignore non-package files
+^IMPLEMENTATION_PROGRESS\.md$
+^run_manual_tests\.R$
+^test_basic_s4\.R$
+^test_s4\.R$
+^scripts$
+^LICENSE\.md$
+^example_model_fitting\.R$
+^example_simple\.R$
+^\.github$
+^data-raw$
+^doc$
+^Meta$
+^test_.*\.R$
+^debug_.*\.R$

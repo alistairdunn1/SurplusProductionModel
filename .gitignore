@@ -67,3 +67,5 @@ scratch/
 
 # Test coverage
 coverage.xml
+/doc/
+/Meta/

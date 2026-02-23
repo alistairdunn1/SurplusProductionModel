@@ -2,7 +2,8 @@
 #'
 #' This package implements a state-space spatial Pella-Tomlinson surplus production
 #' model for Antarctic toothfish (Dissostichus mawsoni) stock assessment. It serves
-#' as the MVP foundation for the ATO rTMB project.
+#' as the operating model foundation for the ATO rTMB project's Management Strategy
+#' Evaluation (MSE) framework.
 #'
 #' @section Key Features:
 #'
@@ -11,18 +12,43 @@
 #'   \item Special cases: Schaefer model (m=2) and Fox model (m=1)
 #'   \item State-space framework with process and observation error
 #'   \item RTMB integration for automatic differentiation and optimization
-#'   \item Spatial structure supporting multiple management areas
-#'   \item Reference point calculations (MSY, BMSY, FMSY)
+#'   \item Spatial structure supporting multiple management areas with movement
+#'   \item Multi-index support for multiple CPUE series per area
+#'   \item Convergence diagnostics: multi-start optimization, jitter tests, retrospective analysis
+#'   \item Profile likelihood confidence intervals for parameters and derived quantities
+#'   \item Bayesian inference via tmbstan MCMC sampling
 #'   \item Comprehensive diagnostics and model validation tools
 #' }
 #'
-#' @section Main Functions:
+#' @section Model Fitting:
 #'
 #' \itemize{
 #'   \item \code{\link{fit_pella_tomlinson_model}}: Fit the surplus production model
-#'   \item \code{\link{calculate_reference_points}}: Calculate biological reference points
-#'   \item \code{\link{estimate_biomass}}: Extract biomass estimates
-#'   \item \code{\link{plot_model_fit}}: Generate diagnostic plots
+#'   \item \code{\link{calculate_reference_points}}: Calculate biological reference points (MSY, BMSY, FMSY)
+#'   \item \code{\link{estimate_biomass}}: Extract biomass estimates with confidence intervals
+#' }
+#'
+#' @section Convergence Diagnostics:
+#'
+#' \itemize{
+#'   \item \code{\link{jitter_test}}: Test optimization reliability from perturbed starting values
+#'   \item \code{\link{retrospective_analysis}}: Compute Mohn's rho for retrospective bias assessment
+#' }
+#'
+#' @section Uncertainty Quantification:
+#'
+#' \itemize{
+#'   \item \code{\link{profile_likelihood}}: Profile likelihood CIs for parameters and derived quantities
+#'   \item \code{\link{bayesian_fit}}: Bayesian MCMC sampling via tmbstan
+#'   \item \code{\link{posterior_predictive_check}}: Bayesian model validation
+#' }
+#'
+#' @section Diagnostics and Visualization:
+#'
+#' \itemize{
+#'   \item \code{\link{plot_model_fit}}: Standard 4-panel diagnostic plots
+#'   \item \code{\link{plot_residuals}}: Enhanced residual diagnostics (QQ, histogram, fitted)
+#'   \item \code{\link{plot_biomass}}: Biomass trajectories with confidence bands
 #' }
 #'
 #' @section Mathematical Formulation:
@@ -31,12 +57,8 @@
 #'
 #' Production function: P(B) = r × B × (1 - (B/K)^(m-1)) / m
 #'
-#' State equation: B[t+1] = B[t] + P(B[t]) - C[t] + ε[t]
+#' State equation: \code{B(t+1) = B(t) + P(B(t)) - C(t) + e(t)}
 #'
-#' Observation equation: CPUE[t] = q × B[t] × exp(η[t])
+#' Observation equation: \code{CPUE(t) = q * B(t) * exp(n(t))}
 #'
-#' @docType package
-#' @name SurplusProductionModel-package
-#' @aliases SurplusProductionModel
-#' @keywords package
-NULL
+"_PACKAGE"
