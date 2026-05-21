@@ -4,7 +4,7 @@ Title: Pella-Tomlinson Surplus Production Model for Antarctic Toothfish
 Version: 0.1.0
 Authors@R: 
     person("Alistair", "Dunn", 
-           email = "alistair.dunn@example.com", 
+           email = "alistair.dunn@oceanenvironmental.co.nz", 
            role = c("aut", "cre"),
            comment = c(ORCID = "YOUR-ORCID-ID"))
 Description: 
@@ -14,7 +14,7 @@ Description:
     biomass-based assessment with spatial structure and shape parameter 
     flexibility. Includes Schaefer (m=2) and Fox (m=1) as special cases.
 License: MIT + file LICENSE
-Encoding: UTF-8
+Encoding: UTF-8 
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
