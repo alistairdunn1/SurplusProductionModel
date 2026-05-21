@@ -11,6 +11,8 @@ profile_likelihood(
   n_points = 20L,
   range_factor = 3,
   delta = 0.5,
+  biomass_target = NULL,
+  baseline = c("auto", "B0", "K"),
   verbose = FALSE
 )
 }
@@ -33,6 +35,14 @@ from the MLE to extend the profiling grid (default: 3).}
 
 \item{delta}{Numeric, fractional step size used when SEs are unavailable
 (default: 0.5, meaning +/- 50 percent of the MLE).}
+
+\item{biomass_target}{Optional numeric vector of target biomass fractions
+used to add depletion-based derived quantities such as \code{"B_40\%K"}
+or \code{"F_40\%B0"}.}
+
+\item{baseline}{Character string indicating which biomass baseline to use
+for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or
+\code{"K"}.}
 
 \item{verbose}{Logical, print progress messages (default: FALSE).}
 }
@@ -65,9 +75,10 @@ on the log scale: the corresponding \code{log_*} parameter in the RTMB
 objective is fixed at each grid value while all other parameters are
 re-optimised.
 
-For derived quantities (\code{MSY}, \code{BMSY}, \code{FMSY}), the
-function profiles over \code{r} and records the derived quantity at each
-point, then inverts the profile deviance to find the CI.
+For derived quantities (\code{MSY}, \code{BMSY}, \code{FMSY}, and any
+requested depletion-based targets), the function profiles over \code{r}
+and \code{K}, records the derived quantity at each point, and then
+inverts the profile deviance to find the CI.
 
 When standard errors from \code{sdreport} are available they are used
 to set the grid range; otherwise the grid spans
@@ -83,6 +94,14 @@ plot(prof)
 prof_rK <- profile_likelihood(fitted_model,
                                parameters = c("r", "K"),
                                n_points = 30)
+
+# Depletion-based derived quantities (e.g., B_40%K and F_40%K)
+prof_targets <- profile_likelihood(
+  fitted_model,
+  parameters = c("B_40%K", "F_40%K"),
+  biomass_target = 0.4,
+  baseline = "K"
+)
 }
 
 }

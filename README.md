@@ -6,7 +6,7 @@
 
 ## Overview
 
-`SurplusProductionModel` is an R package that implements a state-space spatial Pella-Tomlinson surplus production model for Antarctic toothfish (*Dissostichus mawsoni*) stock assessment. This package serves as the operating model foundation for the ATO rTMB project's Management Strategy Evaluation (MSE) framework.
+`SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model for Antarctic toothfish (*Dissostichus mawsoni*) stock assessment. It supports an optional state-space formulation with process error for model fitting. This package serves as the operating model foundation for the ATO rTMB project's Management Strategy Evaluation (MSE) framework.
 
 ## Key Features
 
@@ -14,7 +14,7 @@
 - **Pella-Tomlinson production function** with flexible shape parameter (*m*)
   - Schaefer model (*m* = 2): symmetric production curve
   - Fox model (*m* = 1): asymmetric production curve with peak at lower biomass
-- **State-space framework** with separate process and observation error
+- **Optional state-space framework** with process error in biomass dynamics when `options$process_noise = TRUE`, plus observation error in CPUE
 - **RTMB integration** for automatic differentiation and fast optimization via `nlminb`
 - **Spatial structure** supporting multiple management areas with optional movement
 - **Multi-index support** for multiple CPUE series per area
@@ -66,6 +66,12 @@ data_list <- list(
 
 # Fit Pella-Tomlinson model
 model_fit <- fit_pella_tomlinson_model(data_list)
+
+# Explicit state-space fit with process error
+model_fit_ss <- fit_pella_tomlinson_model(
+  data_list,
+  options = list(process_noise = TRUE)
+)
 
 # View results
 print(model_fit)
@@ -131,6 +137,15 @@ summary(model_fit)  # Includes parameter SEs and confidence intervals
 ref_points <- calculate_reference_points(model_fit)
 print(ref_points)
 # Returns: MSY, BMSY, FMSY, and current B/BMSY ratio
+
+# Calculate user-defined depletion targets analytically
+target_ref_points <- calculate_reference_points(
+  model_fit,
+  biomass_target = 0.4,
+  baseline = "K"
+)
+target_ref_points$target_reference_points
+# Returns B_40%K and F_40%K; use baseline = "B0" when fitted B0 is available
 ```
 
 ### Step 3: Convergence Diagnostics
@@ -164,23 +179,32 @@ plot_biomass(model_fit)
 
 ```r
 # Profile likelihood CI for intrinsic growth rate (r)
-profile_r <- profile_likelihood(model_fit, parameter = "r")
+profile_r <- profile_likelihood(model_fit, parameters = "r")
 print(profile_r)
 plot(profile_r)
 
 # Profile likelihood CI for carrying capacity (K)
-profile_K <- profile_likelihood(model_fit, parameter = "K")
+profile_K <- profile_likelihood(model_fit, parameters = "K")
 print(profile_K)
 plot(profile_K)
 
 # Profile likelihood CI for derived quantity (MSY)
 profile_msy <- profile_likelihood(
-  model_fit, 
-  derived_quantity = "MSY",
+  model_fit,
+  parameters = "MSY",
+  n_points = 25
+)
+
+# Compact depletion-target profile example (returns B_40%K and F_40%K CIs)
+profile_targets <- profile_likelihood(
+  model_fit,
+  parameters = c("B_40%K", "F_40%K"),
+  biomass_target = 0.4,
+  baseline = "K",
   n_points = 25
 )
 print(profile_msy)
-plot(profile_msy)
+print(profile_targets)
 ```
 
 ### Step 6: Bayesian Inference (Optional)
@@ -198,6 +222,17 @@ if (requireNamespace("tmbstan", quietly = TRUE)) {
   )
   print(bayes_fit)  # Summary of posterior distributions
   plot(bayes_fit)   # Posterior density plots
+
+  # Compact depletion-target Bayesian example
+  bayes_fit_targets <- bayesian_fit(
+    model_fit,
+    chains = 2,
+    iter = 1000,
+    warmup = 500,
+    biomass_target = 0.4,
+    baseline = "K"
+  )
+  subset(bayes_fit_targets$summary, parameter %in% c("B_40%K", "F_40%K"))
   
   # Posterior predictive check
   ppc <- posterior_predictive_check(bayes_fit, n_sim = 500)
@@ -226,8 +261,11 @@ The Pella-Tomlinson model is defined by:
 **Production function:**
 P(B) = r × B × (1 - (B/K)^(m-1)) / m
 
-**State equation:**
-B[t+1] = B[t] + P(B[t]) - C[t] + ε[t]
+**State equation (deterministic default):**
+B[t+1] = B[t] + P(B[t]) - C[t]
+
+**State equation (optional state-space mode):**
+log(B[t+1]) = log(B[t] + P(B[t]) - C[t]) + ε[t]
 
 **Observation equation:**
 CPUE[t] = q × B[t] × exp(η[t])
@@ -239,7 +277,7 @@ Where:
 - m = shape parameter
 - C = catch
 - q = catchability coefficient
-- ε ~ N(0, σ²_process) = process error
+- ε ~ N(0, σ²_process) = process error in optional state-space mode (`options$process_noise = TRUE`)
 - η ~ N(0, σ²_obs) = observation error
 
 ## Project Context
@@ -248,11 +286,6 @@ This package is part of the larger ATO rTMB (Antarctic Toothfish Assessment with
 
 **Related packages:**
 - MSE: Management Strategy Evaluation framework (depends on this package)
-- IntegratedAgelengthModel: Comprehensive age-length structured assessment (future development)
-
-## Contributing
-
-Please read our [contributing guidelines](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

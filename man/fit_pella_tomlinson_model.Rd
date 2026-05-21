@@ -22,6 +22,9 @@ If NULL, starting values are generated automatically.}
 \item{silent}{Logical, suppress RTMB output (default: TRUE)}
 \item{control}{List of control parameters for nlminb}
 \item{validate_data}{Logical, run data validation (default: TRUE)}
+\item{process_noise}{Logical, enable state-space process deviations as
+RTMB random effects integrated with the Laplace approximation
+(default: FALSE).}
 \item{n_starts}{Integer, number of random restarts (default: 1).
 When > 1, the optimizer is run from \code{n_starts} different
 starting vectors (the original plus jittered versions) and the
@@ -50,12 +53,13 @@ This function implements the complete model fitting workflow:
 \item Results packaging in ProductionModel object
 }
 
-The model uses a state-space formulation with:
-\itemize{
-\item Process error in biomass dynamics
-\item Observation error in CPUE
-\item Log-transformed parameters for positivity constraints
-}
+By default the model uses deterministic biomass dynamics with observation
+error in CPUE. When \code{options$process_noise = TRUE}, the fitter adds a
+state-space formulation with process deviations in biomass dynamics as RTMB
+random effects.
+
+In both modes, parameters are log-transformed where needed to enforce
+positivity constraints.
 }
 \examples{
 \dontrun{

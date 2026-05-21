@@ -276,15 +276,13 @@ test_that("validate_pt_parameters calculates biological metrics correctly", {
 
   result <- validate_pt_parameters(params_schaefer, return_details = TRUE)
 
-  # For Pella-Tomlinson with m=2:
-  # MSY = r*K*2^(2/1) / 3^(3/1) = r*K*4/27
-  # BMSY = K / 3^(1/1) = K/3
-  expected_msy <- 0.2 * 10000 * 4 / 27
-  expected_bmsy <- 10000 / 3
+  # Unified canonical Schaefer special-case formulas (m = 2)
+  expected_msy <- 0.2 * 10000 / 4
+  expected_bmsy <- 10000 / 2
 
   expect_equal(result$biological_metrics$msy, expected_msy, tolerance = 0.1)
   expect_equal(result$biological_metrics$bmsy, expected_bmsy, tolerance = 0.1)
-  expect_equal(result$biological_metrics$bmsy_k_ratio, 1 / 3, tolerance = 0.01)
+  expect_equal(result$biological_metrics$bmsy_k_ratio, 1 / 2, tolerance = 0.01)
 })
 
 test_that("validate_pt_parameters handles Fox model (m ≈ 1)", {
@@ -303,14 +301,17 @@ test_that("validate_pt_parameters handles Fox model (m ≈ 1)", {
 })
 
 test_that("validate_pt_parameters warns about unusual shape parameters", {
-  # Test that very low m results in error (as expected)
+  # Very low m should be valid but warn as biologically unusual
   params_invalid_m <- c(
     r = 0.1, K = 50000, m = 0.4, q = 0.001,
     sigma_proc = 0.1, sigma_obs = 0.2
   )
 
   result <- validate_pt_parameters(params_invalid_m, return_details = TRUE)
-  expect_false(result$valid) # Should be invalid due to BMSY calculation
+  expect_true(result$valid)
+  expect_true(any(grepl("Shape parameter m < 0.5", result$warnings)))
+  expect_true(result$biological_metrics$msy > 0)
+  expect_true(result$biological_metrics$bmsy > 0)
 
   # Test very high m (should be valid but generate warning)
   params_high_m <- c(

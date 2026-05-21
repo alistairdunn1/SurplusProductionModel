@@ -1,16 +1,17 @@
 #' SurplusProductionModel: Pella-Tomlinson Surplus Production Model for Antarctic Toothfish
 #'
-#' This package implements a state-space spatial Pella-Tomlinson surplus production
-#' model for Antarctic toothfish (Dissostichus mawsoni) stock assessment. It serves
-#' as the operating model foundation for the ATO rTMB project's Management Strategy
-#' Evaluation (MSE) framework.
+#' This package implements a spatial Pella-Tomlinson surplus production model for
+#' Antarctic toothfish (Dissostichus mawsoni) stock assessment. It also supports
+#' an optional state-space formulation with process error for model fitting. It
+#' serves as the operating model foundation for the ATO rTMB project's
+#' Management Strategy Evaluation (MSE) framework.
 #'
 #' @section Key Features:
 #'
 #' \itemize{
 #'   \item Pella-Tomlinson production function with flexible shape parameter (m)
 #'   \item Special cases: Schaefer model (m=2) and Fox model (m=1)
-#'   \item State-space framework with process and observation error
+#'   \item Optional state-space framework with process error, plus observation error in CPUE
 #'   \item RTMB integration for automatic differentiation and optimization
 #'   \item Spatial structure supporting multiple management areas with movement
 #'   \item Multi-index support for multiple CPUE series per area

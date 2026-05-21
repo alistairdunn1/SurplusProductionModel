@@ -34,8 +34,11 @@ Parameter validation checks:
 
 Biological constraints:
 \itemize{
-\item MSY = r\emph{K}m^(m/(m-1))/(m+1)^((m+1)/(m-1)) must be > 0
-\item BMSY = K/(m+1)^(1/(m-1)) must be > 0 and < K
+\item MSY, BMSY, and FMSY are computed via
+\code{calculate_reference_points_from_parameters()} for consistency
+with package-wide reference-point calculations
+\item MSY must be finite and > 0
+\item BMSY must be finite, > 0, and < K
 \item Parameters must result in stable population dynamics
 }
 }

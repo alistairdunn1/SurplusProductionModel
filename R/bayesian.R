@@ -39,6 +39,11 @@ utils::globalVariables(c("chain", "iteration", "param", "sample_value",
 #' @param laplace Logical.  If \code{TRUE}, integrate out random effects
 #'   using the Laplace approximation instead of sampling them.
 #'   Default: \code{FALSE} (full Bayesian).
+#' @param biomass_target Optional numeric vector of target biomass fractions
+#'   used to add depletion-based posterior summaries such as
+#'   `"B_40%K"` or `"F_40%B0"`.
+#' @param baseline Character string indicating which biomass baseline to use
+#'   for `biomass_target`: `"auto"` (default), `"B0"`, or `"K"`.
 #' @param ...     Additional arguments passed to
 #'   \code{\link[rstan]{sampling}} (e.g. \code{control},
 #'   \code{adapt_delta}).
@@ -70,7 +75,8 @@ utils::globalVariables(c("chain", "iteration", "param", "sample_value",
 #'
 #' \strong{Derived quantities.}
 #' After sampling, the function transforms every draw to the natural
-#' scale and computes MSY, BMSY, and FMSY for each posterior draw.
+#' scale and computes MSY, BMSY, FMSY, and any requested depletion-based
+#' targets for each posterior draw.
 #'
 #' \strong{Diagnostics.}
 #' Standard Stan diagnostics (divergent transitions, tree depth,
@@ -83,6 +89,16 @@ utils::globalVariables(c("chain", "iteration", "param", "sample_value",
 #' print(bf)
 #' plot(bf)
 #' plot(bf, type = "pairs")
+#'
+#' # Include depletion-based posterior targets (e.g., B_40%K, F_40%K)
+#' bf_targets <- bayesian_fit(
+#'   fitted_model,
+#'   chains = 2,
+#'   iter = 1000,
+#'   biomass_target = 0.4,
+#'   baseline = "K"
+#' )
+#' subset(bf_targets$summary, parameter %in% c("B_40%K", "F_40%K"))
 #' }
 #'
 #' @export
@@ -95,6 +111,8 @@ bayesian_fit <- function(model_fit,
                          lower  = numeric(0),
                          upper  = numeric(0),
                          laplace = FALSE,
+                         biomass_target = NULL,
+                         baseline = c("auto", "B0", "K"),
                          ...) {
 
   # ---- input validation -------------------------------------------------
@@ -160,6 +178,8 @@ bayesian_fit <- function(model_fit,
   nat_names  <- .log_to_natural_names(par_names)
   nat_mat    <- exp(log_mat)
   colnames(nat_mat) <- nat_names
+  baseline <- match.arg(baseline)
+  validate_biomass_target(biomass_target)
 
   # Derived quantities: MSY, BMSY, FMSY
   # Need: r, K, m
@@ -192,6 +212,17 @@ bayesian_fit <- function(model_fit,
 
   full_mat <- cbind(nat_mat, MSY = MSY_vec, BMSY = BMSY_vec, FMSY = FMSY_vec)
 
+  target_metadata <- NULL
+  if (!is.null(biomass_target)) {
+    target_spec <- .bayesian_target_reference_points(
+      nat_mat = nat_mat,
+      biomass_target = biomass_target,
+      baseline = baseline
+    )
+    full_mat <- cbind(full_mat, target_spec$values)
+    target_metadata <- target_spec$targets
+  }
+
   # ---- posterior summary -------------------------------------------------
   summary_df <- .posterior_summary(full_mat)
 
@@ -203,7 +234,8 @@ bayesian_fit <- function(model_fit,
     summary       = summary_df,
     model_fit     = model_fit,
     par_names     = par_names,
-    nat_names     = c(nat_names, "MSY", "BMSY", "FMSY"),
+    nat_names     = colnames(full_mat),
+    reference_point_targets = target_metadata,
     n_chains      = as.integer(chains),
     n_iter        = as.integer(iter),
     n_warmup      = as.integer(warmup)
@@ -243,6 +275,67 @@ bayesian_fit <- function(model_fit,
     check.names = FALSE,
     stringsAsFactors = FALSE
   )
+}
+
+
+#' Build depletion-based posterior reference points
+#' @keywords internal
+.bayesian_target_reference_points <- function(nat_mat, biomass_target, baseline) {
+  nat_names <- colnames(nat_mat)
+  b0_cols <- grep("^B0(\\.|$)", nat_names)
+
+  baseline_name <- baseline
+  if (baseline_name == "auto") {
+    baseline_name <- if (length(b0_cols) > 0) "B0" else "K"
+  }
+
+  if (baseline_name == "B0" && length(b0_cols) == 0) {
+    stop("baseline = 'B0' requested but no fitted B0 parameter was found")
+  }
+
+  K_draws <- nat_mat[, "K"]
+  r_draws <- nat_mat[, "r"]
+  m_draws <- nat_mat[, "m"]
+
+  if (baseline_name == "B0") {
+    if ("B0" %in% nat_names) {
+      baseline_draws <- nat_mat[, "B0"]
+    } else {
+      baseline_draws <- rowSums(nat_mat[, b0_cols, drop = FALSE])
+    }
+  } else {
+    baseline_draws <- K_draws
+  }
+
+  target_df <- data.frame(
+    fraction = biomass_target,
+    baseline = baseline_name,
+    biomass_name = vapply(biomass_target, format_reference_point_label, character(1), prefix = "B", baseline_name = baseline_name),
+    f_name = vapply(biomass_target, format_reference_point_label, character(1), prefix = "F", baseline_name = baseline_name),
+    stringsAsFactors = FALSE
+  )
+
+  target_values <- vector("list", 2 * nrow(target_df))
+  target_names <- character(2 * nrow(target_df))
+  out_idx <- 1L
+  for (i in seq_len(nrow(target_df))) {
+    biomass_vals <- target_df$fraction[i] * baseline_draws
+    fishing_vals <- calculate_target_fishing_mortality(r_draws, K_draws, m_draws, biomass_vals)
+    fishing_vals[!is.finite(fishing_vals) | fishing_vals < 0] <- NA_real_
+
+    target_names[out_idx] <- target_df$biomass_name[i]
+    target_values[[out_idx]] <- biomass_vals
+    out_idx <- out_idx + 1L
+
+    target_names[out_idx] <- target_df$f_name[i]
+    target_values[[out_idx]] <- fishing_vals
+    out_idx <- out_idx + 1L
+  }
+
+  values <- as.matrix(as.data.frame(target_values, stringsAsFactors = FALSE))
+  colnames(values) <- target_names
+
+  list(targets = target_df, values = values)
 }
 
 
@@ -474,6 +567,49 @@ plot.bayes_fit <- function(x, type = c("trace", "density", "pairs", "histogram")
             BMSY = K_v * (1 / m_v)^(1 / (m_v - 1)),
             FMSY = r_v / m_v * (1 - 1 / m_v)
           )
+          n_iter <- length(vals)
+          rows[[length(rows) + 1]] <- data.frame(
+            param     = p,
+            iteration = seq_len(n_iter),
+            chain     = as.factor(ch),
+            sample_value = vals,
+            stringsAsFactors = FALSE
+          )
+        }
+      } else if (!is.null(x$reference_point_targets) &&
+                 (p %in% x$reference_point_targets$biomass_name ||
+                  p %in% x$reference_point_targets$f_name)) {
+        r_idx  <- match("log_r", par_names_stan)
+        K_idx  <- match("log_K", par_names_stan)
+        m_idx  <- match("log_m", par_names_stan)
+        if (any(is.na(c(r_idx, K_idx, m_idx)))) next
+
+        row_idx <- if (p %in% x$reference_point_targets$biomass_name) {
+          match(p, x$reference_point_targets$biomass_name)
+        } else {
+          match(p, x$reference_point_targets$f_name)
+        }
+        target_fraction <- x$reference_point_targets$fraction[row_idx]
+        target_baseline <- x$reference_point_targets$baseline[row_idx]
+        b0_stan_idx <- grep("^log_B0", par_names_stan)
+
+        for (ch in seq_len(dim(arr)[2])) {
+          r_v <- exp(arr[, ch, r_idx])
+          K_v <- exp(arr[, ch, K_idx])
+          m_v <- exp(arr[, ch, m_idx])
+          if (target_baseline == "B0") {
+            if (length(b0_stan_idx) == 0) next
+            baseline_v <- rowSums(exp(arr[, ch, b0_stan_idx, drop = FALSE]))
+          } else {
+            baseline_v <- K_v
+          }
+          biomass_v <- target_fraction * baseline_v
+          vals <- if (p %in% x$reference_point_targets$biomass_name) {
+            biomass_v
+          } else {
+            calculate_target_fishing_mortality(r_v, K_v, m_v, biomass_v)
+          }
+          vals[!is.finite(vals) | vals < 0] <- NA_real_
           n_iter <- length(vals)
           rows[[length(rows) + 1]] <- data.frame(
             param     = p,

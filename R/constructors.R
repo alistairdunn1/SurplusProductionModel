@@ -211,7 +211,7 @@ fitted.ProductionModel <- function(object, ...) {
 #' @param ... Additional arguments (currently unused)
 #' @return Invisibly returns the object
 #' @export
-print.ProductionModel <- function(x, ...) {
+print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...) {
   cat("Production Model Object\n")
   cat("======================\n\n")
 
@@ -268,6 +268,10 @@ print.ProductionModel <- function(x, ...) {
       cat("  MSY  =", sprintf("%.1f tonnes", x$results$msy), "\n")
       cat("  BMSY =", sprintf("%.1f tonnes", x$results$bmsy), "\n")
       cat("  FMSY =", sprintf("%.4f", x$results$fmsy), "\n")
+      if (!is.null(biomass_target)) {
+        ref_points <- calculate_reference_points(x, biomass_target = biomass_target, baseline = baseline)
+        .print_target_reference_points_block(ref_points$target_reference_points, indent = "  ")
+      }
     }
   } else if (length(x$parameters) > 0) {
     cat("Parameters:\n")
@@ -291,7 +295,7 @@ print.ProductionModel <- function(x, ...) {
 #' @param ... Additional arguments (currently unused)
 #' @return Invisibly returns a list of summary components
 #' @export
-summary.ProductionModel <- function(object, ...) {
+summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...) {
   if (!object$fitted) {
     cat("Unfitted ProductionModel -- no summary available.\n")
     return(invisible(NULL))
@@ -366,6 +370,10 @@ summary.ProductionModel <- function(object, ...) {
     cat(sprintf("  MSY  = %.1f tonnes\n", results$msy))
     cat(sprintf("  BMSY = %.1f tonnes\n", results$bmsy))
     cat(sprintf("  FMSY = %.4f\n", results$fmsy))
+    if (!is.null(biomass_target)) {
+      ref_points <- calculate_reference_points(object, biomass_target = biomass_target, baseline = baseline)
+      .print_target_reference_points_block(ref_points$target_reference_points, indent = "  ")
+    }
     # Current status
     bio <- results$biomass
     terminal_bio <- if (is.matrix(bio)) sum(bio[nrow(bio), ]) else bio[length(bio)]
@@ -404,4 +412,19 @@ summary.ProductionModel <- function(object, ...) {
   }
 
   invisible(list(parameters = ptable, results = results))
+}
+
+.print_target_reference_points_block <- function(target_reference_points, indent = "") {
+  if (is.null(target_reference_points) || nrow(target_reference_points) == 0) {
+    return(invisible(NULL))
+  }
+
+  cat(sprintf("%sUser-Defined Biomass Targets:\n", indent))
+  for (i in seq_len(nrow(target_reference_points))) {
+    row <- target_reference_points[i, ]
+    cat(sprintf("%s  %s = %.1f tonnes\n", indent, row$biomass_name, row$biomass))
+    cat(sprintf("%s  %s = %.4f\n", indent, row$f_name, row$fishing_mortality))
+  }
+
+  invisible(NULL)
 }

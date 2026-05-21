@@ -100,6 +100,28 @@ test_that("bayesian_fit posterior contains derived quantities", {
   expect_true(all(msy_ok > 0))
 })
 
+test_that("bayesian_fit can include depletion-based posterior targets", {
+  skip_if_not_installed("RTMB")
+  skip_if_not_installed("tmbstan")
+  skip_if_not_installed("rstan")
+
+  model <- tryCatch(fit_bayes_model(), error = function(e) {
+    skip(paste("Model fitting failed:", e$message))
+  })
+
+  bf <- tryCatch(
+    bayesian_fit(model, chains = 1, iter = 200, warmup = 100, seed = 42,
+                 biomass_target = 0.4, baseline = "K"),
+    error = function(e) skip(paste("tmbstan failed:", e$message))
+  )
+
+  cn <- colnames(bf$posterior)
+  expect_true("B_40%K" %in% cn)
+  expect_true("F_40%K" %in% cn)
+  expect_true(any(bf$summary$parameter == "B_40%K"))
+  expect_true(any(bf$summary$parameter == "F_40%K"))
+})
+
 
 test_that("bayesian_fit summary has expected columns", {
   skip_if_not_installed("RTMB")

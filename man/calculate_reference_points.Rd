@@ -4,10 +4,19 @@
 \alias{calculate_reference_points}
 \title{Calculate Reference Points from Fitted Model}
 \usage{
-calculate_reference_points(model_fit)
+calculate_reference_points(model_fit, biomass_target = NULL, baseline = c("auto", "B0", "K"))
 }
 \arguments{
 \item{model_fit}{A fitted ProductionModel object (with fitted = TRUE)}
+
+\item{biomass_target}{Optional numeric vector of target biomass fractions.
+For example, \code{0.4} requests \code{B_40\%} and \code{F_40\%} style
+reference points.}
+
+\item{baseline}{Character string indicating which biomass baseline to use
+for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or
+\code{"K"}. In \code{"auto"} mode, the function uses fitted \code{B0} if
+available and otherwise falls back to \code{K}.}
 }
 \value{
 Named list containing reference points:
@@ -15,6 +24,8 @@ Named list containing reference points:
 \item{msy}{Maximum sustainable yield (tonnes)}
 \item{bmsy}{Biomass at MSY (tonnes)}
 \item{fmsy}{Fishing mortality at MSY (per year)}
+\item{target_reference_points}{Optional data frame of user-defined
+biomass and fishing mortality targets for requested biomass fractions.}
 \item{current_status}{List with current biomass and status relative to reference points}
 }
 }
@@ -30,6 +41,16 @@ MSY = r * K * (m-1)^((m-1)/m) / m
 BMSY = K * (m-1)^(1/m) / m
 
 FMSY = MSY / BMSY
+
+For user-defined biomass fractions \code{x}, the function also calculates
+analytical depletion-based targets:
+
+\code{B_x = x * B_base}
+
+\code{F_x = r / m * (1 - (B_x / K)^(m - 1))}
+
+where \code{B_base} is either fitted \code{B0} or \code{K}, depending on
+\code{baseline}.
 
 For special cases:
 \itemize{
@@ -49,6 +70,13 @@ print(ref_points)
 # Extract specific reference points
 msy <- ref_points$msy
 bmsy <- ref_points$bmsy
+
+# Calculate B_40%B0 and F_40%B0 style targets
+target_ref_points <- calculate_reference_points(
+	fitted_model,
+	biomass_target = 0.4,
+	baseline = "B0"
+)
 }
 
 }

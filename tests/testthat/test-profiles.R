@@ -148,6 +148,43 @@ test_that("profile_likelihood works for BMSY", {
   expect_true(prof$mle[["BMSY"]] > 0)
 })
 
+test_that("profile_likelihood works for depletion-based targets", {
+  skip_if_not_installed("RTMB")
+  model <- tryCatch(fit_profile_model(), error = function(e) {
+    skip(paste("Model fitting failed:", e$message))
+  })
+
+  prof <- profile_likelihood(
+    model,
+    parameters = c("B_40%K", "F_40%K"),
+    biomass_target = 0.4,
+    baseline = "K",
+    n_points = 5
+  )
+
+  expect_true("B_40%K" %in% names(prof$profiles))
+  expect_true("F_40%K" %in% names(prof$profiles))
+  expect_true(prof$mle[["B_40%K"]] > 0)
+  expect_true(prof$mle[["F_40%K"]] > 0)
+})
+
+test_that("profile_likelihood suppresses NA/NaN optimizer warning spam", {
+  skip_if_not_installed("RTMB")
+  model <- tryCatch(fit_profile_model(), error = function(e) {
+    skip(paste("Model fitting failed:", e$message))
+  })
+
+  expect_no_warning(
+    profile_likelihood(
+      model,
+      parameters = c("B_40%K", "F_40%K"),
+      biomass_target = 0.4,
+      baseline = "K",
+      n_points = 5
+    )
+  )
+})
+
 
 # ====================  Print and plot methods  ==========================
 

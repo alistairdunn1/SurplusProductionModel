@@ -722,8 +722,11 @@ validate_catch_data <- function(catch, years = NULL, cpue = NULL, effort = NULL,
 #'
 #' Biological constraints:
 #' \itemize{
-#'   \item MSY = r*K*m^(m/(m-1))/(m+1)^((m+1)/(m-1)) must be > 0
-#'   \item BMSY = K/(m+1)^(1/(m-1)) must be > 0 and < K
+#'   \item MSY, BMSY, and FMSY are computed via
+#'     \code{calculate_reference_points_from_parameters()} for consistency
+#'     with package-wide reference-point calculations
+#'   \item MSY must be finite and > 0
+#'   \item BMSY must be finite, > 0, and < K
 #'   \item Parameters must result in stable population dynamics
 #' }
 #'
@@ -869,35 +872,23 @@ validate_pt_parameters <- function(parameters, return_details = FALSE) {
     r <- parameters["r"]
     K <- parameters["K"]
     m <- parameters["m"]
-    q <- parameters["q"]
 
     tryCatch(
       {
-        # Calculate MSY using correct Pella-Tomlinson formula
-        if (m > 1.001) { # Avoid numerical issues near m=1
-          # MSY = r*K*m^(m/(m-1)) / (m+1)^((m+1)/(m-1))
-          term1 <- m^(m / (m - 1))
-          term2 <- (m + 1)^((m + 1) / (m - 1))
-          msy <- r * K * term1 / term2
-        } else {
-          # For m ≈ 1, use Fox model approximation: MSY = r*K/e
-          msy <- r * K / exp(1)
-        }
+        ref_points <- calculate_reference_points_from_parameters(
+          parameters = parameters,
+          warn_on_invalid_m = FALSE
+        )
 
-        # Calculate BMSY using correct formula
-        if (m > 0.1) {
-          # BMSY = K / (m+1)^(1/(m-1))
-          bmsy <- K / (m + 1)^(1 / (m - 1))
-        } else {
-          # For very small m, use limiting case
-          bmsy <- K * exp(-1 / m)
-        }
+        msy <- ref_points$msy
+        bmsy <- ref_points$bmsy
+        fmsy <- ref_points$fmsy
 
         # Calculate reference points
         validation_results$biological_metrics <- list(
           msy = as.numeric(msy),
           bmsy = as.numeric(bmsy),
-          fmsy = as.numeric(msy / bmsy),
+          fmsy = as.numeric(fmsy),
           bmsy_k_ratio = as.numeric(bmsy / K),
           productivity = as.numeric(r * K / 4) # Approximate productivity metric
         )

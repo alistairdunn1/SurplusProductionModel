@@ -117,6 +117,18 @@ test_that("summary.ProductionModel prints without error for fitted model", {
   expect_true(any(grepl("Reference Points", out)))
 })
 
+test_that("summary.ProductionModel can print depletion-based targets", {
+  skip_if_not_installed("RTMB")
+  model <- tryCatch(fit_diag_model(), error = function(e) {
+    skip(paste("Model fitting failed:", e$message))
+  })
+
+  out <- capture.output(summary(model, biomass_target = 0.4, baseline = "K"))
+  expect_true(any(grepl("User-Defined Biomass Targets", out)))
+  expect_true(any(grepl("B_40%K", out, fixed = TRUE)))
+  expect_true(any(grepl("F_40%K", out, fixed = TRUE)))
+})
+
 test_that("summary returns invisible list for fitted model", {
   skip_if_not_installed("RTMB")
   model <- tryCatch(fit_diag_model(), error = function(e) {

@@ -198,6 +198,83 @@ test_that("calculate_reference_points current status calculations work", {
   expect_equal(ref_points3$current_status$harvest_status, "No overfishing")
 })
 
+test_that("calculate_reference_points calculates user-defined biomass targets analytically", {
+  fitted_model <- ProductionModel(
+    years = 2000:2005,
+    catch = rep(1000, 6),
+    cpue = rep(1.5, 6),
+    effort = rep(1000 / 1.5, 6),
+    parameters = c(r = 0.3, K = 5000, m = 2.0, B0 = 6000, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
+  )
+  fitted_model$fitted <- TRUE
+
+  ref_points <- calculate_reference_points(fitted_model, biomass_target = c(0.4, 0.35))
+
+  expect_true("target_reference_points" %in% names(ref_points))
+  expect_equal(nrow(ref_points$target_reference_points), 2)
+  expect_equal(ref_points$target_reference_points$baseline, c("B0", "B0"))
+  expect_equal(ref_points$target_reference_points$biomass_name, c("B_40%B0", "B_35%B0"))
+  expect_equal(ref_points$target_reference_points$f_name, c("F_40%B0", "F_35%B0"))
+
+  expected_b40 <- 0.4 * 6000
+  expected_f40 <- 0.3 / 2 * (1 - expected_b40 / 5000)
+  expect_equal(ref_points$target_reference_points$biomass[1], expected_b40, tolerance = 1e-10)
+  expect_equal(ref_points$target_reference_points$fishing_mortality[1], expected_f40, tolerance = 1e-10)
+})
+
+test_that("calculate_reference_points can use K as the depletion baseline", {
+  fitted_model <- ProductionModel(
+    years = 2000:2005,
+    catch = rep(1000, 6),
+    cpue = rep(1.5, 6),
+    effort = rep(1000 / 1.5, 6),
+    parameters = c(r = 0.3, K = 5000, m = 2.0, B0 = 6000, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
+  )
+  fitted_model$fitted <- TRUE
+
+  ref_points <- calculate_reference_points(fitted_model, biomass_target = 0.4, baseline = "K")
+
+  expect_equal(ref_points$target_reference_points$baseline, "K")
+  expect_equal(ref_points$target_reference_points$biomass_name, "B_40%K")
+  expect_equal(ref_points$target_reference_points$f_name, "F_40%K")
+  expect_equal(ref_points$target_reference_points$biomass, 0.4 * 5000, tolerance = 1e-10)
+  expect_equal(ref_points$target_reference_points$fishing_mortality, 0.3 / 2 * (1 - 0.4), tolerance = 1e-10)
+})
+
+test_that("calculate_reference_points handles Fox depletion targets analytically", {
+  fitted_model <- ProductionModel(
+    years = 2000:2005,
+    catch = rep(1000, 6),
+    cpue = rep(1.5, 6),
+    effort = rep(1000 / 1.5, 6),
+    parameters = c(r = 0.3, K = 5000, m = 1.0, B0 = 6000, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
+  )
+  fitted_model$fitted <- TRUE
+
+  ref_points <- calculate_reference_points(fitted_model, biomass_target = 0.4, baseline = "K")
+  expected_biomass <- 0.4 * 5000
+  expected_f <- 0.3 * log(5000 / expected_biomass)
+
+  expect_equal(ref_points$target_reference_points$biomass, expected_biomass, tolerance = 1e-10)
+  expect_equal(ref_points$target_reference_points$fishing_mortality, expected_f, tolerance = 1e-10)
+})
+
+test_that("calculate_reference_points validates biomass target inputs", {
+  fitted_model <- ProductionModel(
+    years = 2000:2005,
+    catch = rep(1000, 6),
+    cpue = rep(1.5, 6),
+    effort = rep(1000 / 1.5, 6),
+    parameters = c(r = 0.3, K = 5000, m = 2.0, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
+  )
+  fitted_model$fitted <- TRUE
+
+  expect_error(calculate_reference_points(fitted_model, biomass_target = 0), "must be > 0 and <= 1")
+  expect_error(calculate_reference_points(fitted_model, biomass_target = 1.2), "must be > 0 and <= 1")
+  expect_error(calculate_reference_points(fitted_model, biomass_target = "0.4"), "must be a numeric vector")
+  expect_error(calculate_reference_points(fitted_model, biomass_target = 0.4, baseline = "B0"), "no fitted B0 parameter")
+})
+
 test_that("print method for reference points works", {
   # Create reference points object
   ref_points <- list(

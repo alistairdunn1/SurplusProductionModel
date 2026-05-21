@@ -24,6 +24,9 @@ NULL
 #'     \item{silent}{Logical, suppress RTMB output (default: TRUE)}
 #'     \item{control}{List of control parameters for nlminb}
 #'     \item{validate_data}{Logical, run data validation (default: TRUE)}
+#'     \item{process_noise}{Logical, enable state-space process deviations as
+#'       RTMB random effects integrated with the Laplace approximation
+#'       (default: FALSE).}
 #'     \item{n_starts}{Integer, number of random restarts (default: 1).
 #'       When > 1, the optimizer is run from \code{n_starts} different
 #'       starting vectors (the original plus jittered versions) and the
@@ -45,10 +48,13 @@ NULL
 #' 7. Convergence checking and diagnostics
 #' 8. Results packaging in ProductionModel object
 #'
-#' The model uses a state-space formulation with:
-#' - Process error in biomass dynamics
-#' - Observation error in CPUE
-#' - Log-transformed parameters for positivity constraints
+#' By default the model uses deterministic biomass dynamics with observation
+#' error in CPUE. When \code{options$process_noise = TRUE}, the fitter adds a
+#' state-space formulation with process deviations in biomass dynamics as RTMB
+#' random effects.
+#'
+#' In both modes, parameters are log-transformed where needed to enforce
+#' positivity constraints.
 #'
 #' @examples
 #' \dontrun{
@@ -174,7 +180,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   # Build data environment for the RTMB objective
   n_years <- length(processed_data$years)
-  areas   <- if (!is.null(processed_data$areas)) processed_data$areas else "A1"
+  areas <- if (!is.null(processed_data$areas)) processed_data$areas else "A1"
   n_areas <- length(areas)
   has_labels <- !is.null(processed_data$labels)
 
@@ -182,8 +188,8 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # log_q -> log_q_A1, log_B0 -> log_B0_A1  (objective always uses area suffix)
   if (n_areas == 1 && !has_labels) {
     a <- areas[1]
-    q_key  <- paste0("log_q_", a)
-    b0_key <- paste0("log_b0_", a)   # after rename_dots, lowercase possible
+    q_key <- paste0("log_q_", a)
+    b0_key <- paste0("log_b0_", a) # after rename_dots, lowercase possible
     b0_key2 <- paste0("log_B0_", a)
     if ("log_q" %in% names(params_init) && !q_key %in% names(params_init)) {
       params_init[[q_key]] <- params_init[["log_q"]]
@@ -204,7 +210,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   # cpue as matrix or 3-d array
   if (has_labels) {
-    cpue_obs <- processed_data$cpue  # [year x area x label]
+    cpue_obs <- processed_data$cpue # [year x area x label]
   } else {
     cpue_obs <- if (is.matrix(processed_data$cpue)) {
       processed_data$cpue
@@ -224,10 +230,10 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   # Attach movement data
   if (!is.null(processed_data$movement_rate)) {
-    rtmb_data$movement_rate   <- processed_data$movement_rate
-    rtmb_data$decay           <- processed_data$decay
+    rtmb_data$movement_rate <- processed_data$movement_rate
+    rtmb_data$decay <- processed_data$decay
     rtmb_data$distance_matrix <- processed_data$distance_matrix
-    rtmb_data$attractiveness  <- processed_data$attractiveness
+    rtmb_data$attractiveness <- processed_data$attractiveness
   }
 
   # ---- Build parameter list for MakeADFun ---------------------------
@@ -282,7 +288,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   )
 
   # ---- Optimise (with optional multi-start) ----------------------------
-  n_starts  <- max(1L, as.integer(options$n_starts %||% 1L))
+  n_starts <- max(1L, as.integer(options$n_starts %||% 1L))
   jitter_sd <- as.numeric(options$jitter_sd %||% 0.2)
 
   start_time <- Sys.time()
@@ -307,7 +313,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
       error = function(e) NULL
     )
     if (!is.null(this_opt) && is.finite(this_opt$objective) &&
-        this_opt$objective < best_nll) {
+      this_opt$objective < best_nll) {
       best_nll <- this_opt$objective
       best_opt <- this_opt
     }
@@ -340,15 +346,18 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   hessian_valid <- FALSE
   sdr <- NULL
 
-  tryCatch({
-    sdr <- RTMB::sdreport(obj)
-    hessian_valid <- sdr$pdHess
-    # Fixed parameter SEs
-    summ_fixed <- summary(sdr, "fixed")
-    std_errors <- setNames(summ_fixed[, "Std. Error"], rownames(summ_fixed))
-  }, error = function(e) {
-    warning("sdreport failed: ", e$message)
-  })
+  tryCatch(
+    {
+      sdr <- RTMB::sdreport(obj)
+      hessian_valid <- sdr$pdHess
+      # Fixed parameter SEs
+      summ_fixed <- summary(sdr, "fixed")
+      std_errors <- setNames(summ_fixed[, "Std. Error"], rownames(summ_fixed))
+    },
+    error = function(e) {
+      warning("sdreport failed: ", e$message)
+    }
+  )
 
   # ---- Extract results ------------------------------------------------
   # First, transform parameters back to natural scale (needed for
@@ -367,12 +376,16 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # Only convert area/label suffixes, NOT core parameter names like log_K.
   for (a in areas) {
     names(log_par_scalar) <- gsub(paste0("_", a), paste0(".", a),
-                                   names(log_par_scalar), fixed = TRUE)
+      names(log_par_scalar),
+      fixed = TRUE
+    )
   }
   if (has_labels) {
     for (l in processed_data$labels) {
       names(log_par_scalar) <- gsub(paste0("_", l), paste0(".", l),
-                                     names(log_par_scalar), fixed = TRUE)
+        names(log_par_scalar),
+        fixed = TRUE
+      )
     }
   }
   fitted_params <- transform_parameters_to_natural(log_par_scalar)
@@ -381,28 +394,33 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # This avoids RTMB REPORT/advector complications (NaN promotion,
   # dimension loss) while still using ADREPORT for sdreport SEs.
   model_results <- calculate_model_results(fitted_params, processed_data)
-  B_est     <- model_results$biomass
-  hr_est    <- model_results$harvest_rate
-  fc_est    <- model_results$fitted_cpue
+  B_est <- model_results$biomass
+  hr_est <- model_results$harvest_rate
+  fc_est <- model_results$fitted_cpue
   residuals <- model_results$residuals
 
   # SE for derived quantities from ADREPORT (biomass SEs)
   biomass_se <- NULL
   if (!is.null(sdr) && hessian_valid) {
-    tryCatch({
-      summ_report <- summary(sdr, "report")
-      # Extract B_mat rows
-      b_rows <- grepl("^B_mat$", rownames(summ_report))
-      if (any(b_rows)) {
-        biomass_se <- summ_report[b_rows, "Std. Error"]
-        if (n_areas == 1 && !has_labels) {
-          biomass_se <- as.numeric(biomass_se)
-        } else {
-          biomass_se <- matrix(biomass_se, nrow = n_years, ncol = n_areas,
-                               dimnames = list(as.character(processed_data$years), areas))
+    tryCatch(
+      {
+        summ_report <- summary(sdr, "report")
+        # Extract B_mat rows
+        b_rows <- grepl("^B_mat$", rownames(summ_report))
+        if (any(b_rows)) {
+          biomass_se <- summ_report[b_rows, "Std. Error"]
+          if (n_areas == 1 && !has_labels) {
+            biomass_se <- as.numeric(biomass_se)
+          } else {
+            biomass_se <- matrix(biomass_se,
+              nrow = n_years, ncol = n_areas,
+              dimnames = list(as.character(processed_data$years), areas)
+            )
+          }
         }
-      }
-    }, error = function(e) NULL)
+      },
+      error = function(e) NULL
+    )
   }
 
   # Reference points
@@ -731,8 +749,8 @@ calculate_model_results <- function(parameters, data) {
   if (!is.null(data$movement_rate) && data$movement_rate > 0) {
     move_rate <- data$movement_rate
     decay_val <- data$decay
-    dist_mat  <- data$distance_matrix
-    attract   <- data$attractiveness
+    dist_mat <- data$distance_matrix
+    attract <- data$attractiveness
     nA <- n_areas
     # Build movement kernel (same as in objective function)
     W <- matrix(0, nA, nA)
@@ -814,25 +832,14 @@ calculate_model_results <- function(parameters, data) {
 #'
 #' @keywords internal
 calculate_reference_points_internal <- function(parameters) {
-  r <- parameters[["r"]]
-  K <- parameters[["K"]]
-  m <- parameters[["m"]]
-
-  # Calculate reference points using Pella-Tomlinson formulas
-  if (m <= 1) {
-    # Handle edge case
-    msy <- r * K / 4 # Approximate for m close to 1
-    bmsy <- K / 2
-  } else {
-    msy <- r * K * (m - 1)^((m - 1) / m) / m
-    bmsy <- K * (m - 1)^(1 / m) / m
-  }
-
-  fmsy <- msy / bmsy
+  ref <- calculate_reference_points_from_parameters(
+    parameters = parameters,
+    warn_on_invalid_m = FALSE
+  )
 
   list(
-    msy = msy,
-    bmsy = bmsy,
-    fmsy = fmsy
+    msy = ref$msy,
+    bmsy = ref$bmsy,
+    fmsy = ref$fmsy
   )
 }

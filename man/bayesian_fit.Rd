@@ -14,6 +14,8 @@ bayesian_fit(
   lower = numeric(0),
   upper = numeric(0),
   laplace = FALSE,
+  biomass_target = NULL,
+  baseline = c("auto", "B0", "K"),
   ...
 )
 }
@@ -44,6 +46,14 @@ Default: \code{+Inf} for all parameters (no upper bound).}
 \item{laplace}{Logical.  If \code{TRUE}, integrate out random effects
 using the Laplace approximation instead of sampling them.
 Default: \code{FALSE} (full Bayesian).}
+
+\item{biomass_target}{Optional numeric vector of target biomass fractions
+used to add depletion-based posterior summaries such as \code{"B_40\%K"}
+or \code{"F_40\%B0"}.}
+
+\item{baseline}{Character string indicating which biomass baseline to use
+for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or
+\code{"K"}.}
 
 \item{...}{Additional arguments passed to
 \code{\link[rstan]{sampling}} (e.g. \code{control},
@@ -83,7 +93,8 @@ should modify the RTMB objective function directly.
 
 \strong{Derived quantities.}
 After sampling, the function transforms every draw to the natural
-scale and computes MSY, BMSY, and FMSY for each posterior draw.
+scale and computes MSY, BMSY, FMSY, and any requested depletion-based
+targets for each posterior draw.
 
 \strong{Diagnostics.}
 Standard Stan diagnostics (divergent transitions, tree depth,
@@ -96,6 +107,16 @@ bf <- bayesian_fit(fitted_model, chains = 2, iter = 1000)
 print(bf)
 plot(bf)
 plot(bf, type = "pairs")
+
+# Include depletion-based posterior targets (e.g., B_40%K, F_40%K)
+bf_targets <- bayesian_fit(
+  fitted_model,
+  chains = 2,
+  iter = 1000,
+  biomass_target = 0.4,
+  baseline = "K"
+)
+subset(bf_targets$summary, parameter %in% c("B_40%K", "F_40%K"))
 }
 
 }

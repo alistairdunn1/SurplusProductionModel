@@ -27,6 +27,11 @@ NULL
 #'   from the MLE to extend the profiling grid (default: 3).
 #' @param delta Numeric, fractional step size used when SEs are unavailable
 #'   (default: 0.5, meaning +/- 50 percent of the MLE).
+#' @param biomass_target Optional numeric vector of target biomass fractions
+#'   used to add depletion-based derived quantities such as `"B_40%K"`
+#'   or `"F_40%B0"`.
+#' @param baseline Character string indicating which biomass baseline to use
+#'   for `biomass_target`: `"auto"` (default), `"B0"`, or `"K"`.
 #' @param verbose Logical, print progress messages (default: FALSE).
 #'
 #' @return A list with class \code{"profile_likelihood"} containing:
@@ -50,9 +55,10 @@ NULL
 #' objective is fixed at each grid value while all other parameters are
 #' re-optimised.
 #'
-#' For derived quantities (\code{MSY}, \code{BMSY}, \code{FMSY}), the
-#' function profiles over \code{r} and records the derived quantity at each
-#' point, then inverts the profile deviance to find the CI.
+#' For derived quantities (\code{MSY}, \code{BMSY}, \code{FMSY}, and any
+#' requested depletion-based targets), the function profiles over \code{r}
+#' and \code{K}, records the derived quantity at each point, and then
+#' inverts the profile deviance to find the CI.
 #'
 #' When standard errors from \code{sdreport} are available they are used
 #' to set the grid range; otherwise the grid spans
@@ -68,6 +74,14 @@ NULL
 #' prof_rK <- profile_likelihood(fitted_model,
 #'                                parameters = c("r", "K"),
 #'                                n_points = 30)
+#'
+#' # Depletion-based derived quantities (e.g., B_40%K and F_40%K)
+#' prof_targets <- profile_likelihood(
+#'   fitted_model,
+#'   parameters = c("B_40%K", "F_40%K"),
+#'   biomass_target = 0.4,
+#'   baseline = "K"
+#' )
 #' }
 #'
 #' @export
@@ -77,6 +91,8 @@ profile_likelihood <- function(model_fit,
                                n_points = 20L,
                                range_factor = 3,
                                delta = 0.5,
+                               biomass_target = NULL,
+                               baseline = c("auto", "B0", "K"),
                                verbose = FALSE) {
   if (!inherits(model_fit, "ProductionModel")) {
     stop("Input must be a fitted ProductionModel object")
@@ -97,10 +113,22 @@ profile_likelihood <- function(model_fit,
   nat_parms <- model_fit$parameters         # natural-scale named vector
   crit_val  <- qchisq(ci_level, df = 1)     # chi-sq(1) critical value
   ctrl      <- list(eval.max = 1000, iter.max = 500)
+  baseline  <- match.arg(baseline)
 
   # Derived quantity names that are not direct model parameters
-
   derived_names <- c("MSY", "BMSY", "FMSY")
+  if (!is.null(biomass_target)) {
+    target_ref <- calculate_reference_points_from_parameters(
+      parameters = nat_parms,
+      biomass_target = biomass_target,
+      baseline = baseline
+    )
+    derived_names <- c(
+      derived_names,
+      target_ref$target_reference_points$biomass_name,
+      target_ref$target_reference_points$f_name
+    )
+  }
 
   profiles <- list()
   ci_list  <- list()
@@ -109,12 +137,13 @@ profile_likelihood <- function(model_fit,
   for (pname in parameters) {
     if (verbose) message("Profiling: ", pname)
 
-    is_derived <- toupper(pname) %in% derived_names
+    is_derived <- pname %in% derived_names || toupper(pname) %in% c("MSY", "BMSY", "FMSY")
 
     if (is_derived) {
       res <- .profile_derived(pname, model_fit, obj, mle_nll, mle_par,
                               se_vec, nat_parms, n_points, range_factor,
-                              delta, crit_val, ctrl, verbose)
+                              delta, crit_val, ctrl, verbose,
+                              biomass_target, baseline)
     } else {
       res <- .profile_parameter(pname, model_fit, obj, mle_nll, mle_par,
                                 se_vec, nat_parms, n_points, range_factor,
@@ -207,19 +236,22 @@ profile_likelihood <- function(model_fit,
 # ---- Internal: profile a derived quantity (MSY, BMSY, FMSY) -----------
 .profile_derived <- function(pname, model_fit, obj, mle_nll, mle_par,
                              se_vec, nat_parms, n_points, range_factor,
-                             delta, crit_val, ctrl, verbose) {
+                             delta, crit_val, ctrl, verbose,
+                             biomass_target, baseline) {
   # Strategy: profile over all estimable parameters one at a time
   # and compute the derived quantity at each profile point.
   # We profile r (the most influential on MSY/BMSY) unless it's fixed.
 
   # Compute MLE-derived quantities
-  r_mle <- nat_parms[["r"]]
-  K_mle <- nat_parms[["K"]]
-  m_mle <- nat_parms[["m"]]
-  ref_mle <- .calc_ref(r_mle, K_mle, m_mle)
+  ref_mle <- calculate_reference_points_from_parameters(
+    parameters = nat_parms,
+    biomass_target = biomass_target,
+    baseline = baseline,
+    warn_on_invalid_m = FALSE
+  )
 
-  target <- toupper(pname)
-  mle_dq <- ref_mle[[target]]
+  target <- if (toupper(pname) %in% c("MSY", "BMSY", "FMSY")) toupper(pname) else pname
+  mle_dq <- extract_named_reference_value(ref_mle, target)
 
   # Profile over r to get the derived-quantity profile
 
@@ -280,12 +312,14 @@ profile_likelihood <- function(model_fit,
     nll_vals_r[i]  <- res$nll
     conv_vals_r[i] <- res$converged
     # Reconstruct natural-scale pars at this profile point
-    opt_par <- res$par_full
-    r_i <- exp(opt_par[[log_r_name]])
-    K_i <- if (!is.null(log_K_name)) exp(opt_par[[log_K_name]]) else K_mle
-    m_i <- exp(opt_par[[.resolve_log_name("m", names(mle_par), model_fit$data$areas)]])
-    ref_i <- .calc_ref(r_i, K_i, m_i)
-    dq_vals_r[i] <- ref_i[[target]]
+    nat_i <- .naturalise_profile_parameters(res$par_full)
+    ref_i <- calculate_reference_points_from_parameters(
+      parameters = nat_i,
+      biomass_target = biomass_target,
+      baseline = baseline,
+      warn_on_invalid_m = FALSE
+    )
+    dq_vals_r[i] <- extract_named_reference_value(ref_i, target)
   }
 
   # Collect from profiling K (if available)
@@ -302,12 +336,14 @@ profile_likelihood <- function(model_fit,
       res <- .profile_one_point(obj, mle_par, idx_K, grid_log_K[i], ctrl)
       nll_vals_K[i]  <- res$nll
       conv_vals_K[i] <- res$converged
-      opt_par <- res$par_full
-      r_i <- exp(opt_par[[log_r_name]])
-      K_i <- exp(opt_par[[log_K_name]])
-      m_i <- exp(opt_par[[.resolve_log_name("m", names(mle_par), model_fit$data$areas)]])
-      ref_i <- .calc_ref(r_i, K_i, m_i)
-      dq_vals_K[i] <- ref_i[[target]]
+      nat_i <- .naturalise_profile_parameters(res$par_full)
+      ref_i <- calculate_reference_points_from_parameters(
+        parameters = nat_i,
+        biomass_target = biomass_target,
+        baseline = baseline,
+        warn_on_invalid_m = FALSE
+      )
+      dq_vals_K[i] <- extract_named_reference_value(ref_i, target)
     }
 
     dq_vals   <- c(dq_vals, dq_vals_K)
@@ -337,6 +373,7 @@ profile_likelihood <- function(model_fit,
 # ---- Internal: fix one parameter and re-optimise the rest --------------
 .profile_one_point <- function(obj, mle_par, idx_fixed, fixed_val, ctrl) {
   n_par <- length(mle_par)
+  bad_nll <- .Machine$double.xmax / 1e100
   # Indices of free parameters (all except the fixed one)
   idx_free <- setdiff(seq_len(n_par), idx_fixed)
 
@@ -349,7 +386,11 @@ profile_likelihood <- function(model_fit,
     full_par[idx_fixed] <- fixed_val
     full_par[idx_free]  <- par_free
     names(full_par) <- names(mle_par)
-    obj$fn(full_par)
+    val <- obj$fn(full_par)
+    if (!is.finite(val)) {
+      return(bad_nll)
+    }
+    val
   }
 
   gr_wrapper <- function(par_free) {
@@ -358,14 +399,28 @@ profile_likelihood <- function(model_fit,
     full_par[idx_free]  <- par_free
     names(full_par) <- names(mle_par)
     full_gr <- obj$gr(full_par)
-    full_gr[idx_free]
+    free_gr <- full_gr[idx_free]
+    free_gr[!is.finite(free_gr)] <- 0
+    free_gr
   }
 
   opt <- tryCatch(
-    nlminb(start_free, fn_wrapper, gr_wrapper, control = ctrl),
+    withCallingHandlers(
+      nlminb(start_free, fn_wrapper, gr_wrapper, control = ctrl),
+      warning = function(w) {
+        if (grepl("NA/NaN function evaluation", conditionMessage(w), fixed = TRUE)) {
+          invokeRestart("muffleWarning")
+        }
+      }
+    ),
     error = function(e) list(objective = NA_real_, convergence = 99L,
                              par = start_free)
   )
+
+  if (!is.finite(opt$objective)) {
+    opt$objective <- bad_nll
+    opt$convergence <- 98L
+  }
 
   # Reconstruct full parameter vector
   full_par <- numeric(n_par)
@@ -476,17 +531,13 @@ profile_likelihood <- function(model_fit,
 }
 
 
-# ---- Internal: calculate reference points from r, K, m ----------------
-.calc_ref <- function(r, K, m) {
-  if (m <= 1) {
-    msy  <- r * K / 4
-    bmsy <- K / 2
-  } else {
-    msy  <- r * K * (m - 1)^((m - 1) / m) / m
-    bmsy <- K * (m - 1)^(1 / m) / m
-  }
-  fmsy <- msy / bmsy
-  list(MSY = msy, BMSY = bmsy, FMSY = fmsy)
+# ---- Internal: naturalise profile parameters ---------------------------
+.naturalise_profile_parameters <- function(log_par) {
+  nat_par <- exp(log_par)
+  nat_names <- sub("^log_", "", names(log_par))
+  nat_names <- sub("^(q|B0|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat_names)
+  names(nat_par) <- nat_names
+  nat_par
 }
 
 
