@@ -114,6 +114,14 @@ bayesian_fit <- function(model_fit,
                          biomass_target = NULL,
                          baseline = c("auto", "B0", "K"),
                          ...) {
+  defaults <- resolve_reference_point_defaults(
+    biomass_target = biomass_target,
+    baseline = baseline,
+    biomass_target_missing = missing(biomass_target),
+    baseline_missing = missing(baseline)
+  )
+  biomass_target <- defaults$biomass_target
+  baseline <- defaults$baseline
 
   # ---- input validation -------------------------------------------------
   if (!inherits(model_fit, "ProductionModel")) {
@@ -178,8 +186,6 @@ bayesian_fit <- function(model_fit,
   nat_names  <- .log_to_natural_names(par_names)
   nat_mat    <- exp(log_mat)
   colnames(nat_mat) <- nat_names
-  baseline <- match.arg(baseline)
-  validate_biomass_target(biomass_target)
 
   # Derived quantities: MSY, BMSY, FMSY
   # Need: r, K, m

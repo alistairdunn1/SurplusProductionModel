@@ -129,6 +129,32 @@ test_that("summary.ProductionModel can print depletion-based targets", {
   expect_true(any(grepl("F_40%K", out, fixed = TRUE)))
 })
 
+test_that("summary and print methods can use package-level defaults", {
+  skip_if_not_installed("RTMB")
+  model <- tryCatch(fit_diag_model(), error = function(e) {
+    skip(paste("Model fitting failed:", e$message))
+  })
+
+  old_target <- getOption("SurplusProductionModel.biomass_target_default")
+  old_baseline <- getOption("SurplusProductionModel.baseline_default")
+  on.exit({
+    do.call(options, setNames(list(old_target), "SurplusProductionModel.biomass_target_default"))
+    do.call(options, setNames(list(old_baseline), "SurplusProductionModel.baseline_default"))
+  }, add = TRUE)
+  set_reference_point_defaults(biomass_target = 0.4, baseline = "K")
+
+  out_summary <- capture.output(summary(model))
+  out_print <- capture.output(print(model))
+
+  expect_true(any(grepl("User-Defined Biomass Targets", out_summary)))
+  expect_true(any(grepl("B_40%K", out_summary, fixed = TRUE)))
+  expect_true(any(grepl("F_40%K", out_summary, fixed = TRUE)))
+
+  expect_true(any(grepl("User-Defined Biomass Targets", out_print)))
+  expect_true(any(grepl("B_40%K", out_print, fixed = TRUE)))
+  expect_true(any(grepl("F_40%K", out_print, fixed = TRUE)))
+})
+
 test_that("summary returns invisible list for fitted model", {
   skip_if_not_installed("RTMB")
   model <- tryCatch(fit_diag_model(), error = function(e) {

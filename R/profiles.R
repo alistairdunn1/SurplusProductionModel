@@ -94,6 +94,15 @@ profile_likelihood <- function(model_fit,
                                biomass_target = NULL,
                                baseline = c("auto", "B0", "K"),
                                verbose = FALSE) {
+  defaults <- resolve_reference_point_defaults(
+    biomass_target = biomass_target,
+    baseline = baseline,
+    biomass_target_missing = missing(biomass_target),
+    baseline_missing = missing(baseline)
+  )
+  biomass_target <- defaults$biomass_target
+  baseline <- defaults$baseline
+
   if (!inherits(model_fit, "ProductionModel")) {
     stop("Input must be a fitted ProductionModel object")
   }
@@ -113,7 +122,6 @@ profile_likelihood <- function(model_fit,
   nat_parms <- model_fit$parameters         # natural-scale named vector
   crit_val  <- qchisq(ci_level, df = 1)     # chi-sq(1) critical value
   ctrl      <- list(eval.max = 1000, iter.max = 500)
-  baseline  <- match.arg(baseline)
 
   # Derived quantity names that are not direct model parameters
   derived_names <- c("MSY", "BMSY", "FMSY")

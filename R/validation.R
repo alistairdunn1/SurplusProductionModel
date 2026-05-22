@@ -55,7 +55,7 @@ detect_outliers <- function(x, method = c("iqr", "zscore"), threshold = NULL) {
 
 #' Validate CPUE Data
 #'
-#' Comprehensive validation of CPUE (Catch Per Unit Effort) data for Antarctic
+#' Validation of CPUE (Catch Per Unit Effort) data for Antarctic
 #' toothfish stock assessment, including data quality checks, outlier detection,
 #' and consistency verification.
 #'
@@ -361,7 +361,7 @@ validate_cpue_data <- function(cpue, years = NULL, effort = NULL, catch = NULL,
 
 #' Validate Catch Data
 #'
-#' Comprehensive validation of catch data for Antarctic toothfish stock assessment,
+#' Validation of catch data for Antarctic toothfish stock assessment,
 #' including biological plausibility checks, temporal consistency, and data quality
 #' assessment.
 #'
@@ -698,7 +698,7 @@ validate_catch_data <- function(catch, years = NULL, cpue = NULL, effort = NULL,
 
 #' Validate Pella-Tomlinson Model Parameters
 #'
-#' Comprehensive validation of parameters for the Pella-Tomlinson surplus production
+#' Validation of parameters for the Pella-Tomlinson surplus production
 #' model, ensuring biological plausibility and mathematical constraints.
 #'
 #' @param parameters Named numeric vector of model parameters containing:

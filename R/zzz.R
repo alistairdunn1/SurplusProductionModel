@@ -1,6 +1,8 @@
 # Suppress R CMD check NOTEs for variables created by RTMB::getAll()
-utils::globalVariables(c("log_r", "log_K", "log_m", "log_sigma_obs",
-                        "log_sigma_proc", "proc_dev"))
+utils::globalVariables(c(
+  "log_r", "log_K", "log_m", "log_sigma_obs",
+  "log_sigma_proc", "proc_dev"
+))
 
 .onAttach <- function(libname, pkgname) {
   packageStartupMessage(
@@ -8,7 +10,7 @@ utils::globalVariables(c("log_r", "log_K", "log_m", "log_sigma_obs",
     utils::packageVersion("SurplusProductionModel"),
     " loaded."
   )
-  packageStartupMessage("Pella-Tomlinson surplus production model for Antarctic toothfish.")
+  packageStartupMessage("Pella-Tomlinson surplus production model.")
 }
 
 .onLoad <- function(libname, pkgname) {

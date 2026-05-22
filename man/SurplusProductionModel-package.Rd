@@ -4,12 +4,11 @@
 \name{SurplusProductionModel-package}
 \alias{SurplusProductionModel}
 \alias{SurplusProductionModel-package}
-\title{SurplusProductionModel: Pella-Tomlinson Surplus Production Model for Antarctic Toothfish}
+\title{SurplusProductionModel: Pella-Tomlinson Surplus Production Model
 \description{
-This package implements a spatial Pella-Tomlinson surplus production model for
-Antarctic toothfish (Dissostichus mawsoni) stock assessment. It also supports
-an optional state-space formulation with process error for model fitting. It
-serves as the operating model foundation for the ATO rTMB project's Management
+This package implements a spatial Pella-Tomlinson surplus production model. 
+It also supports an optional state-space formulation with process error for 
+model fitting. It serves as the operating model foundation for the Management
 Strategy Evaluation (MSE) framework.
 }
 \section{Key Features}{

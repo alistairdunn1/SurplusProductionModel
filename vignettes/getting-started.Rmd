@@ -20,9 +20,7 @@ knitr::opts_chunk$set(
 
 The **SurplusProductionModel** package fits Pella-Tomlinson surplus production
 models to fishery catch and abundance index (CPUE) data using maximum likelihood
-estimation. It is designed for stock assessment of Antarctic toothfish
-(*Dissostichus mawsoni*) in the Ross Sea but is applicable to any species where
-biomass dynamics are well described by a surplus production model.
+estimation. 
 
 The Pella-Tomlinson model generalises the classic Schaefer model by adding a
 shape parameter *m* that controls the location of maximum sustainable yield

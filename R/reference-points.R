@@ -6,6 +6,55 @@
 #' @name reference-points
 NULL
 
+#' Set Package-Level Reference Point Defaults
+#'
+#' Sets package-wide defaults for depletion target reporting. These defaults
+#' are used by functions such as \code{calculate_reference_points()},
+#' \code{profile_likelihood()}, \code{bayesian_fit()},
+#' \code{summary.ProductionModel()}, and \code{print.ProductionModel()}
+#' when \code{biomass_target} and/or \code{baseline} are not supplied.
+#'
+#' @param biomass_target Optional numeric vector of default biomass fractions
+#'   to use when a function call omits \code{biomass_target}. Pass
+#'   \code{NULL} explicitly to clear the default.
+#' @param baseline Optional default biomass baseline, one of
+#'   \code{"auto"}, \code{"B0"}, or \code{"K"}.
+#'
+#' @return Invisibly returns the updated defaults as a named list.
+#' @export
+set_reference_point_defaults <- function(biomass_target = NULL,
+                                         baseline = c("auto", "B0", "K")) {
+  if (!missing(biomass_target)) {
+    validate_biomass_target(biomass_target)
+    do.call(options, stats::setNames(
+      list(biomass_target),
+      "SurplusProductionModel.biomass_target_default"
+    ))
+  }
+  if (!missing(baseline)) {
+    baseline <- match.arg(baseline)
+    do.call(options, stats::setNames(
+      list(baseline),
+      "SurplusProductionModel.baseline_default"
+    ))
+  }
+
+  invisible(get_reference_point_defaults())
+}
+
+#' Get Package-Level Reference Point Defaults
+#'
+#' Returns current package-level defaults for depletion target reporting.
+#'
+#' @return Named list with entries \code{biomass_target} and \code{baseline}.
+#' @export
+get_reference_point_defaults <- function() {
+  list(
+    biomass_target = getOption("SurplusProductionModel.biomass_target_default", NULL),
+    baseline = getOption("SurplusProductionModel.baseline_default", "auto")
+  )
+}
+
 #' Calculate Reference Points from Fitted Model
 #'
 #' Calculates biological reference points (MSY, BMSY, FMSY) from a fitted
@@ -14,11 +63,13 @@ NULL
 #' @param model_fit A fitted ProductionModel object (with fitted = TRUE)
 #' @param biomass_target Optional numeric vector of target biomass fractions.
 #'   For example, `0.4` requests `B_40%B0` and `F_40%B0` style reference
-#'   points.
+#'   points. If omitted, uses package default from
+#'   \code{get_reference_point_defaults()}.
 #' @param baseline Character string indicating which biomass baseline to use
 #'   for `biomass_target`: `"auto"` (default), `"B0"`, or `"K"`. In
 #'   `"auto"` mode, the function uses fitted `B0` if available and otherwise
-#'   falls back to `K`.
+#'   falls back to `K`. If omitted, uses package default from
+#'   \code{get_reference_point_defaults()}.
 #'
 #' @return Named list containing reference points:
 #'   \describe{
@@ -77,6 +128,15 @@ NULL
 #'
 #' @export
 calculate_reference_points <- function(model_fit, biomass_target = NULL, baseline = c("auto", "B0", "K")) {
+  defaults <- resolve_reference_point_defaults(
+    biomass_target = biomass_target,
+    baseline = baseline,
+    biomass_target_missing = missing(biomass_target),
+    baseline_missing = missing(baseline)
+  )
+  biomass_target <- defaults$biomass_target
+  baseline <- defaults$baseline
+
   # Input validation
   if (!inherits(model_fit, "ProductionModel")) {
     stop("model_fit must be a ProductionModel object")
@@ -377,6 +437,28 @@ extract_named_reference_value <- function(reference_points, name) {
   if (!is.na(f_idx)) return(target_df$fishing_mortality[f_idx])
 
   NULL
+}
+
+resolve_reference_point_defaults <- function(biomass_target,
+                                             baseline,
+                                             biomass_target_missing = FALSE,
+                                             baseline_missing = FALSE) {
+  defaults <- get_reference_point_defaults()
+
+  if (biomass_target_missing) {
+    biomass_target <- defaults$biomass_target
+  }
+  if (baseline_missing) {
+    baseline <- defaults$baseline
+  }
+
+  validate_biomass_target(biomass_target)
+  baseline <- match.arg(baseline, c("auto", "B0", "K"))
+
+  list(
+    biomass_target = biomass_target,
+    baseline = baseline
+  )
 }
 
 #' Biomass Estimation from Fitted Model

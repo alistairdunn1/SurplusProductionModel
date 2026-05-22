@@ -212,6 +212,15 @@ fitted.ProductionModel <- function(object, ...) {
 #' @return Invisibly returns the object
 #' @export
 print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...) {
+  defaults <- resolve_reference_point_defaults(
+    biomass_target = biomass_target,
+    baseline = baseline,
+    biomass_target_missing = missing(biomass_target),
+    baseline_missing = missing(baseline)
+  )
+  biomass_target <- defaults$biomass_target
+  baseline <- defaults$baseline
+
   cat("Production Model Object\n")
   cat("======================\n\n")
 
@@ -296,6 +305,15 @@ print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto",
 #' @return Invisibly returns a list of summary components
 #' @export
 summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...) {
+  defaults <- resolve_reference_point_defaults(
+    biomass_target = biomass_target,
+    baseline = baseline,
+    biomass_target_missing = missing(biomass_target),
+    baseline_missing = missing(baseline)
+  )
+  biomass_target <- defaults$biomass_target
+  baseline <- defaults$baseline
+
   if (!object$fitted) {
     cat("Unfitted ProductionModel -- no summary available.\n")
     return(invisible(NULL))

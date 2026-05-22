@@ -11,12 +11,14 @@ calculate_reference_points(model_fit, biomass_target = NULL, baseline = c("auto"
 
 \item{biomass_target}{Optional numeric vector of target biomass fractions.
 For example, \code{0.4} requests \code{B_40\%} and \code{F_40\%} style
-reference points.}
+reference points. If omitted, uses package default from
+\code{get_reference_point_defaults()}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
 for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or
 \code{"K"}. In \code{"auto"} mode, the function uses fitted \code{B0} if
-available and otherwise falls back to \code{K}.}
+available and otherwise falls back to \code{K}. If omitted, uses
+package default from \code{get_reference_point_defaults()}.}
 }
 \value{
 Named list containing reference points:

@@ -6,11 +6,12 @@
 
 ## Overview
 
-`SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model for Antarctic toothfish (*Dissostichus mawsoni*) stock assessment. It supports an optional state-space formulation with process error for model fitting. This package serves as the operating model foundation for the ATO rTMB project's Management Strategy Evaluation (MSE) framework.
+`SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model for Antarctic toothfish (*Dissostichus mawsoni*) stock assessment. It supports an optional state-space formulation with process error for model fitting. This package serves as the operating model foundation for the the Surplus Production Model Management Strategy Evaluation (MSE) framework.
 
 ## Key Features
 
 ### Model Fitting
+
 - **Pella-Tomlinson production function** with flexible shape parameter (*m*)
   - Schaefer model (*m* = 2): symmetric production curve
   - Fox model (*m* = 1): asymmetric production curve with peak at lower biomass
@@ -20,20 +21,23 @@
 - **Multi-index support** for multiple CPUE series per area
 
 ### Convergence Diagnostics
+
 - **Multi-start optimization** (`n_starts` parameter) to find global minimum
 - **Jitter test** (`jitter_test()`) to assess optimization reliability from perturbed starts
 - **Retrospective analysis** (`retrospective_analysis()`) with Mohn's rho for systematic bias detection
 
 ### Uncertainty Quantification
+
 - **Delta-method standard errors** via `sdreport` (Hessian-based)
 - **Profile likelihood confidence intervals** (`profile_likelihood()`) for parameters and derived quantities
 - **Bayesian MCMC sampling** (`bayesian_fit()`) via Stan's NUTS sampler using `tmbstan`
 - **Posterior predictive checks** (`posterior_predictive_check()`) for model validation
 
 ### Diagnostics & Visualization
-- **Reference points**: MSY, B<sub>MSY</sub>, F<sub>MSY</sub> with current B/B<sub>MSY</sub> ratio
+
+- **Reference points**: MSY, B`<sub>`MSY`</sub>`, F`<sub>`MSY`</sub>` with current B/B`<sub>`MSY`</sub>` ratio
 - **Residual diagnostics** (`plot_residuals()`): QQ plots, residuals vs. fitted, histograms
-- **Biomass plots** (`plot_biomass()`): trajectories with confidence bands and B<sub>MSY</sub> reference
+- **Biomass plots** (`plot_biomass()`): trajectories with confidence bands and B`<sub>`MSY`</sub>` reference
 - **Standard diagnostic panel** (`plot_model_fit()`): biomass, CPUE fit, residuals, harvest rate
 
 ## Installation
@@ -45,6 +49,7 @@ devtools::install_github("alistairdunn1/SurplusProductionModel")
 ```
 
 ### Optional dependencies for Bayesian analysis:
+
 ```r
 install.packages(c("tmbstan", "rstan"))
 ```
@@ -243,16 +248,16 @@ if (requireNamespace("tmbstan", quietly = TRUE)) {
 
 ### Diagnostic Output Summary
 
-| Function | Output |
-|----------|--------|
-| `plot_model_fit()` | 4-panel: biomass, CPUE fit, residuals, harvest rate |
-| `plot_residuals()` | QQ plot, histogram, residuals vs fitted |
-| `plot_biomass()` | Biomass trajectory with CI and B<sub>MSY</sub> reference |
-| `jitter_test()` | Optimization reliability assessment |
-| `retrospective_analysis()` | Mohn's rho and retrospective bias patterns |
-| `profile_likelihood()` | Likelihood-based confidence intervals |
-| `bayesian_fit()` | Full posterior distributions via MCMC |
-| `posterior_predictive_check()` | Bayesian model validation |
+| Function                         | Output                                                           |
+| -------------------------------- | ---------------------------------------------------------------- |
+| `plot_model_fit()`             | 4-panel: biomass, CPUE fit, residuals, harvest rate              |
+| `plot_residuals()`             | QQ plot, histogram, residuals vs fitted                          |
+| `plot_biomass()`               | Biomass trajectory with CI and B`<sub>`MSY`</sub>` reference |
+| `jitter_test()`                | Optimization reliability assessment                              |
+| `retrospective_analysis()`     | Mohn's rho and retrospective bias patterns                       |
+| `profile_likelihood()`         | Likelihood-based confidence intervals                            |
+| `bayesian_fit()`               | Full posterior distributions via MCMC                            |
+| `posterior_predictive_check()` | Bayesian model validation                                        |
 
 ## Mathematical Formulation
 
@@ -271,38 +276,21 @@ log(B[t+1]) = log(B[t] + P(B[t]) - C[t]) + ε[t]
 CPUE[t] = q × B[t] × exp(η[t])
 
 Where:
+
 - B = biomass
 - r = intrinsic growth rate
-- K = carrying capacity  
+- K = carrying capacity
 - m = shape parameter
 - C = catch
 - q = catchability coefficient
 - ε ~ N(0, σ²_process) = process error in optional state-space mode (`options$process_noise = TRUE`)
 - η ~ N(0, σ²_obs) = observation error
 
-## Project Context
-
-This package is part of the larger ATO rTMB (Antarctic Toothfish Assessment with RTMB) project, which aims to develop a comprehensive suite of stock assessment and management strategy evaluation tools for Antarctic toothfish.
-
-**Related packages:**
-- MSE: Management Strategy Evaluation framework (depends on this package)
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
 ## Citation
 
 If you use this package in your research, please cite:
 
 ```
-Dunn, A. (2025). SurplusProductionModel: Pella-Tomlinson Surplus Production Model 
-for Antarctic Toothfish. R package version 0.1.0.
+Dunn, A. (2025). SurplusProductionModel: Pella-Tomlinson Surplus Production Model. R package version 0.1.0.
 https://github.com/alistairdunn1/SurplusProductionModel
 ```
-
-## Support
-
-- Report bugs: [GitHub Issues](https://github.com/alistairdunn1/SurplusProductionModel/issues)
-- Documentation: [Package website](https://alistairdunn1.github.io/SurplusProductionModel/)
-- Questions: [Discussions](https://github.com/alistairdunn1/SurplusProductionModel/discussions)
