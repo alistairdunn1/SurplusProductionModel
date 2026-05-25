@@ -154,6 +154,46 @@ test_that("transform_parameters_to_natural works correctly", {
   expect_equal(natural_params[["sigma_obs"]], 0.3, tolerance = 1e-10)
 })
 
+test_that("transform_parameters_to_natural handles AR1 and covariate effects", {
+  params <- c(
+    log_r = log(0.3),
+    theta_rho = atanh(0.4),
+    beta_temp = -0.15
+  )
+
+  natural <- transform_parameters_to_natural(params)
+
+  expect_true("rho" %in% names(natural))
+  expect_equal(natural[["rho"]], 0.4, tolerance = 1e-10)
+  expect_equal(natural[["beta_temp"]], -0.15, tolerance = 1e-10)
+  expect_equal(natural[["r"]], 0.3, tolerance = 1e-10)
+})
+
+test_that("environmental covariates are aligned and scaled", {
+  years <- 2000:2005
+  areas <- c("A1", "A2")
+  env_data <- data.frame(
+    year = rep(years, times = 2),
+    area = rep(areas, each = length(years)),
+    temp = c(seq(0.2, 0.7, length.out = length(years)), seq(0.3, 0.8, length.out = length(years))),
+    nao = c(seq(-1, 1, length.out = length(years)), seq(-0.5, 1.5, length.out = length(years)))
+  )
+
+  env_info <- .prepare_environmental_covariates(
+    env_data = env_data,
+    years = years,
+    areas = areas,
+    covariate_names = c("temp", "nao"),
+    lag = 1,
+    scale_covariates = TRUE
+  )
+
+  expect_true(all(c("env_array", "covariate_names", "scaling") %in% names(env_info)))
+  expect_equal(dim(env_info$env_array), c(length(years) - 1, length(areas), 2))
+  expect_equal(env_info$scaling$lag, 1)
+  expect_equal(sort(env_info$covariate_names), c("nao", "temp"))
+})
+
 test_that("calculate_model_results produces expected output", {
   # Create test parameters
   parameters <- c(
@@ -225,6 +265,224 @@ test_that("fit_pella_tomlinson_model input validation works", {
     catch_data = data.frame(year = 2000, wrong_name = 1000)
   )
   expect_error(fit_pella_tomlinson_model(missing_catch_col))
+
+  env_missing_data <- list(
+    cpue_data = data.frame(year = 2000:2004, cpue = rep(1.2, 5)),
+    catch_data = data.frame(year = 2000:2004, catch = rep(1000, 5))
+  )
+  expect_error(
+    fit_pella_tomlinson_model(
+      env_missing_data,
+      options = list(env_covariates = c("temp"), validate_data = FALSE)
+    ),
+    "env_data"
+  )
+})
+
+test_that("fit_pella_tomlinson_model validates prior specifications", {
+  skip_if_not_installed("RTMB")
+
+  years <- 2010:2015
+  data_list <- list(
+    cpue_data = data.frame(year = years, cpue = seq(1.2, 0.9, length.out = length(years))),
+    catch_data = data.frame(year = years, catch = rep(800, length(years)))
+  )
+
+  expect_error(
+    fit_pella_tomlinson_model(
+      data_list,
+      options = list(
+        validate_data = FALSE,
+        silent = TRUE,
+        priors = list(r = list(dist = "lognormal"))
+      )
+    ),
+    "meanlog"
+  )
+
+  expect_error(
+    fit_pella_tomlinson_model(
+      data_list,
+      options = list(
+        validate_data = FALSE,
+        silent = TRUE,
+        priors = list(unknown_param = list(dist = "normal", mean = 0, sd = 1))
+      )
+    ),
+    "does not match any fitted parameter"
+  )
+})
+
+test_that("strong r priors influence the fitted r estimate", {
+  skip_if_not_installed("RTMB")
+
+  set.seed(321)
+  years <- 2010:2018
+  true_params <- list(r = 0.3, K = 6000, m = 2, q = 0.0012, B0 = 5000)
+
+  biomass <- numeric(length(years))
+  biomass[1] <- true_params$B0
+  catch <- rep(700, length(years))
+  for (t in seq_len(length(years) - 1)) {
+    production <- true_params$r * biomass[t] * (1 - biomass[t] / true_params$K) / true_params$m
+    biomass[t + 1] <- max(100, biomass[t] + production - catch[t])
+  }
+
+  cpue <- true_params$q * biomass * exp(rnorm(length(years), 0, 0.08))
+  data_list <- list(
+    cpue_data = data.frame(year = years, cpue = cpue),
+    catch_data = data.frame(year = years, catch = catch)
+  )
+
+  base_options <- list(
+    validate_data = FALSE,
+    silent = TRUE,
+    control = list(eval.max = 300, iter.max = 150)
+  )
+
+  fit_low <- tryCatch(
+    fit_pella_tomlinson_model(
+      data_list,
+      options = modifyList(base_options, list(
+        priors = list(r = list(dist = "lognormal", meanlog = log(0.08), sdlog = 0.08))
+      ))
+    ),
+    error = function(e) skip(paste("Low-r prior fit failed:", e$message))
+  )
+
+  fit_high <- tryCatch(
+    fit_pella_tomlinson_model(
+      data_list,
+      options = modifyList(base_options, list(
+        priors = list(r = list(dist = "lognormal", meanlog = log(0.7), sdlog = 0.08))
+      ))
+    ),
+    error = function(e) skip(paste("High-r prior fit failed:", e$message))
+  )
+
+  expect_lt(unname(fit_low$parameters["r"]), unname(fit_high$parameters["r"]))
+  expect_equal(fit_low$results$priors[[1]]$param, "log_r")
+  expect_equal(fit_high$results$priors[[1]]$param, "log_r")
+})
+
+test_that("B_initial prior alias maps to B0 parameter", {
+  skip_if_not_installed("RTMB")
+
+  years <- 2010:2016
+  data_list <- list(
+    cpue_data = data.frame(year = years, cpue = seq(1.5, 1.0, length.out = length(years))),
+    catch_data = data.frame(year = years, catch = rep(650, length(years)))
+  )
+
+  fit_alias <- tryCatch(
+    fit_pella_tomlinson_model(
+      data_list,
+      options = list(
+        validate_data = FALSE,
+        silent = TRUE,
+        control = list(eval.max = 200, iter.max = 100),
+        priors = list(B_initial = list(dist = "lognormal", meanlog = log(5000), sdlog = 0.3))
+      )
+    ),
+    error = function(e) skip(paste("B_initial alias fit failed:", e$message))
+  )
+
+  prior_params <- vapply(fit_alias$results$priors, function(x) x$param, character(1))
+  expect_true(any(grepl("^log_B0", prior_params)))
+  expect_true(any(grepl("^B_initial", names(fit_alias$parameters))))
+})
+
+test_that("AR1 process structure captures positive autocorrelation better than IID", {
+  skip_if_not_installed("RTMB")
+
+  set.seed(42)
+  years <- 1990:2014
+  n <- length(years)
+
+  true <- list(
+    r = 0.28,
+    K = 6000,
+    m = 2,
+    q = 0.0014,
+    B0 = 5000,
+    sigma_proc = 0.08,
+    sigma_obs = 0.08,
+    rho = 0.7,
+    beta = 0.18
+  )
+
+  env <- as.numeric(scale(sin(seq_len(n)) + rnorm(n, 0, 0.3)))
+  u <- numeric(n - 1)
+  u[1] <- rnorm(1, 0, true$sigma_proc / sqrt(1 - true$rho^2))
+  if (n > 2) {
+    for (t in 2:(n - 1)) {
+      u[t] <- true$rho * u[t - 1] + rnorm(1, 0, true$sigma_proc)
+    }
+  }
+
+  B <- numeric(n)
+  B[1] <- true$B0
+  catch <- rep(700, n)
+  for (t in seq_len(n - 1)) {
+    prod_t <- true$r * B[t] * (1 - B[t] / true$K) / true$m
+    B_det <- max(1, B[t] + prod_t - catch[t])
+    B[t + 1] <- exp(log(B_det) + true$beta * env[t] + u[t])
+  }
+  cpue <- true$q * B * exp(rnorm(n, 0, true$sigma_obs))
+
+  data_list <- list(
+    cpue_data = data.frame(year = years, cpue = cpue),
+    catch_data = data.frame(year = years, catch = catch),
+    env_data = data.frame(year = years, temp = env)
+  )
+
+  common_opts <- list(
+    validate_data = FALSE,
+    silent = TRUE,
+    process_noise = TRUE,
+    env_covariates = "temp",
+    fixed_params = list(log_m = log(2)),
+    control = list(eval.max = 1200, iter.max = 600)
+  )
+
+  params_init <- list(
+    log_r = log(0.25),
+    log_K = log(5500),
+    log_m = log(2),
+    log_sigma_proc = log(0.1),
+    log_sigma_obs = log(0.1),
+    log_q.A1 = log(0.0012),
+    log_B0.A1 = log(4500),
+    beta_temp = 0
+  )
+
+  fit_iid <- tryCatch(
+    fit_pella_tomlinson_model(
+      data_list,
+      params_init = params_init,
+      options = modifyList(common_opts, list(process_error_structure = "iid"))
+    ),
+    error = function(e) skip(paste("IID fit failed:", e$message))
+  )
+
+  fit_ar1 <- tryCatch(
+    fit_pella_tomlinson_model(
+      data_list,
+      params_init = params_init,
+      options = modifyList(common_opts, list(process_error_structure = "ar1"))
+    ),
+    error = function(e) skip(paste("AR1 fit failed:", e$message))
+  )
+
+  expect_equal(fit_iid$results$process_error_structure, "iid")
+  expect_equal(fit_ar1$results$process_error_structure, "ar1")
+
+  # Directionality checks: true rho is strongly positive.
+  expect_true(is.finite(fit_ar1$results$rho))
+  expect_gt(unname(fit_ar1$results$rho), 0.2)
+
+  # AR1 should fit at least as well as IID on AR1-generated data.
+  expect_lte(fit_ar1$results$likelihood, fit_iid$results$likelihood + 1e-6)
 })
 
 # Integration test with minimal example

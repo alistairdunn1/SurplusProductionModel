@@ -78,6 +78,27 @@ model_fit_ss <- fit_pella_tomlinson_model(
   options = list(process_noise = TRUE)
 )
 
+# Optional environmental covariates + AR1 process error
+# (example covariate shown as annual SST anomaly)
+env_data <- data.frame(
+  year = ross_sea_catch$year,
+  sst_anomaly = scale(rnorm(nrow(ross_sea_catch)))
+)
+
+model_fit_env_ar1 <- fit_pella_tomlinson_model(
+  data = list(
+    cpue_data = ross_sea_cpue,
+    catch_data = ross_sea_catch,
+    env_data = env_data
+  ),
+  options = list(
+    process_noise = TRUE,
+    process_error_structure = "ar1",
+    env_covariates = "sst_anomaly",
+    env_lag = 0
+  )
+)
+
 # View results
 print(model_fit)
 summary(model_fit)

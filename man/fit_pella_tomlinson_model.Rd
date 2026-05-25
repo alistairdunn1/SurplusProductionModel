@@ -31,6 +31,13 @@ starting vectors (the original plus jittered versions) and the
 run with the lowest objective is retained.}
 \item{jitter_sd}{Numeric, standard deviation of log-normal jitter
 applied to starting values for multi-start (default: 0.2).}
+\item{priors}{Optional named list of priors on model parameters.
+Each element is a list with \code{dist} and distribution-specific
+fields. Supported distributions are:\cr
+\code{normal}: \code{list(dist = "normal", mean = ..., sd = ...)}\cr
+\code{lognormal}: \code{list(dist = "lognormal", meanlog = ..., sdlog = ...)}\cr
+Parameter names can be supplied in natural form (e.g. \code{"r"},
+\code{"K"}) or log form (e.g. \code{"log_r"}, \code{"log_K"}).}
 }}
 }
 \value{
@@ -71,6 +78,17 @@ data_list <- list(
 
 # Fit model
 model_fit <- fit_pella_tomlinson_model(data_list)
+
+# Fit model with informative priors on r and K
+fit_pr <- fit_pella_tomlinson_model(
+  data_list,
+  options = list(
+    priors = list(
+      r = list(dist = "lognormal", meanlog = log(0.2), sdlog = 0.4),
+      K = list(dist = "lognormal", meanlog = log(6000), sdlog = 0.5)
+    )
+  )
+)
 
 # View results
 print(model_fit)

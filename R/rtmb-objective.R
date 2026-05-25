@@ -52,19 +52,37 @@ create_rtmb_objective <- function(data_env) {
     RTMB::getAll(parms, warn = FALSE)
 
     # ---- Transform global parameters from log scale ----
-    r         <- exp(log_r)
-    K         <- exp(log_K)
-    m         <- exp(log_m)
+    r <- exp(log_r)
+    K <- exp(log_K)
+    m <- exp(log_m)
     sigma_obs <- exp(log_sigma_obs)
 
     n_years <- data_env$n_years
     n_areas <- data_env$n_areas
-    areas   <- data_env$areas
+    areas <- data_env$areas
 
     has_proc <- exists("log_sigma_proc", inherits = FALSE) &&
-                exists("proc_dev", inherits = FALSE)
+      exists("proc_dev", inherits = FALSE)
     if (has_proc) {
       sigma_proc <- exp(log_sigma_proc)
+    }
+
+    process_error_structure <- data_env$process_error_structure %||% "iid"
+    use_ar1 <- has_proc && identical(process_error_structure, "ar1")
+    if (use_ar1) {
+      rho <- tanh(parms[["theta_rho"]])
+    }
+
+    has_env <- !is.null(data_env$env_array) && !is.null(data_env$env_covariate_names)
+    if (has_env) {
+      env_array <- data_env$env_array # [n_years-1 x n_areas x n_cov]
+      cov_names <- data_env$env_covariate_names
+      n_cov <- length(cov_names)
+      beta_cov <- RTMB::advector(numeric(n_cov))
+      for (ic in seq_len(n_cov)) {
+        beta_name <- paste0("beta_", cov_names[ic])
+        beta_cov[ic] <- parms[[beta_name]]
+      }
     }
 
     # ---- Extract per-area B0 and q ----
@@ -98,8 +116,8 @@ create_rtmb_objective <- function(data_env) {
     }
 
     # ---- Retrieve data ----
-    catch_mat <- data_env$catch_mat   # [n_years x n_areas]
-    cpue_obs  <- data_env$cpue_obs    # matrix or 3-d array
+    catch_mat <- data_env$catch_mat # [n_years x n_areas]
+    cpue_obs <- data_env$cpue_obs # matrix or 3-d array
 
     # ---- Biomass dynamics ----
     # Use a list-of-vectors to store biomass (avoids matrix ops that strip
@@ -121,12 +139,32 @@ create_rtmb_objective <- function(data_env) {
         # sqrt(x^2 + eps^2) ≈ |x| for |x| >> eps.
         B_det_ia <- 0.5 * (B_det_ia + sqrt(B_det_ia * B_det_ia + 4e-8)) + 1e-8
 
+        env_effect_ia <- 0
+        if (has_env) {
+          for (ic in seq_len(n_cov)) {
+            env_effect_ia <- env_effect_ia + env_array[t, ia, ic] * beta_cov[ic]
+          }
+        }
+
         if (has_proc) {
-          log_B_next_ia <- log(B_det_ia) + proc_dev[t, ia]
-          nll <- nll - RTMB::dnorm(proc_dev[t, ia], 0, sigma_proc, log = TRUE)
+          log_B_next_ia <- log(B_det_ia) + env_effect_ia + proc_dev[t, ia]
+          if (use_ar1) {
+            if (t == 1L) {
+              sd0 <- sigma_proc / sqrt(1 - rho * rho + 1e-8)
+              nll <- nll - RTMB::dnorm(proc_dev[t, ia], 0, sd0, log = TRUE)
+            } else {
+              nll <- nll - RTMB::dnorm(proc_dev[t, ia], rho * proc_dev[t - 1, ia], sigma_proc, log = TRUE)
+            }
+          } else {
+            nll <- nll - RTMB::dnorm(proc_dev[t, ia], 0, sigma_proc, log = TRUE)
+          }
           B_next[ia] <- exp(log_B_next_ia)
         } else {
-          B_next[ia] <- B_det_ia
+          if (has_env) {
+            B_next[ia] <- exp(log(B_det_ia) + env_effect_ia)
+          } else {
+            B_next[ia] <- B_det_ia
+          }
         }
       }
       B[[t + 1]] <- B_next
@@ -136,8 +174,8 @@ create_rtmb_objective <- function(data_env) {
     if (!is.null(data_env$movement_rate) && data_env$movement_rate > 0) {
       move_rate <- data_env$movement_rate
       decay_val <- data_env$decay
-      dist_mat  <- data_env$distance_matrix
-      attract   <- data_env$attractiveness
+      dist_mat <- data_env$distance_matrix
+      attract <- data_env$attractiveness
       nA <- n_areas
       # Build movement kernel (constant, plain R – no AD)
       W <- matrix(0, nA, nA)
@@ -207,6 +245,8 @@ create_rtmb_objective <- function(data_env) {
     RTMB::ADREPORT(m)
     RTMB::ADREPORT(sigma_obs)
     if (has_proc) RTMB::ADREPORT(sigma_proc)
+    if (use_ar1) RTMB::ADREPORT(rho)
+    if (has_env) RTMB::ADREPORT(beta_cov)
 
     # Harvest rate (advector for ADREPORT)
     harvest_rate <- RTMB::advector(matrix(0, n_years, n_areas))
@@ -238,8 +278,27 @@ create_rtmb_objective <- function(data_env) {
       RTMB::ADREPORT(fitted_cpue)
     }
 
+    nll <- .apply_parameter_priors(nll, parms, data_env$priors)
+
     nll
   }
+}
+
+.apply_parameter_priors <- function(nll, parms, priors) {
+  if (is.null(priors) || length(priors) == 0) {
+    return(nll)
+  }
+
+  for (prior in priors) {
+    param_value <- parms[[prior$param]]
+    if (prior$dist == "normal") {
+      nll <- nll - RTMB::dnorm(param_value, mean = prior$mean, sd = prior$sd, log = TRUE)
+    } else if (prior$dist == "lognormal") {
+      nll <- nll - RTMB::dnorm(param_value, mean = prior$meanlog, sd = prior$sdlog, log = TRUE)
+    }
+  }
+
+  nll
 }
 
 #' Create Simple Objective Function (non-RTMB fallback)
@@ -344,7 +403,6 @@ create_simple_objective <- function(data, initial_params) {
     K <- exp(par[["log_K"]])
     m <- exp(par[["log_m"]])
     sigma_obs <- exp(par[["log_sigma_obs"]])
-    sigma_proc <- if (has_key(par, "log_sigma_proc")) exp(par[["log_sigma_proc"]]) else NA_real_
 
     n_years <- length(data$years)
     areas <- data$areas
@@ -483,7 +541,6 @@ create_simple_objective <- function(data, initial_params) {
 #'
 #' @keywords internal
 generate_starting_values <- function(data) {
-  n_years <- length(data$years)
   multi_area <- is.matrix(data$cpue) || is.matrix(data$catch)
   has_label <- !is.null(data$labels)
   if (has_label) {
@@ -503,9 +560,18 @@ generate_starting_values <- function(data) {
   }
 
   # Estimate intrinsic growth rate from CPUE trend (use total index if multi-area)
-  cpue_total <- rowSums(cpue_mat, na.rm = TRUE)
-  cpue_trend <- try(lm(log(pmax(cpue_total, 1e-8)) ~ data$years), silent = TRUE)
-  r_est <- if (inherits(cpue_trend, "try-error")) 0.2 else abs(coef(cpue_trend)[2]) * 4
+  cpue_total_vals <- as.numeric(rowSums(cpue_mat, na.rm = TRUE))
+  valid <- is.finite(cpue_total_vals) & cpue_total_vals > 0 & is.finite(data$years)
+  slope <- NA_real_
+  if (sum(valid) >= 2) {
+    x <- as.numeric(data$years[valid])
+    y <- log(cpue_total_vals[valid])
+    fit <- try(stats::lm.fit(cbind(1, x), y), silent = TRUE)
+    if (!inherits(fit, "try-error") && length(fit$coefficients) >= 2) {
+      slope <- fit$coefficients[2]
+    }
+  }
+  r_est <- if (!is.finite(slope)) 0.2 else abs(slope) * 4
   r_est <- max(0.05, min(r_est, 1.0)) # Constrain to reasonable range
 
   # Estimate carrying capacity using MSY heuristic (Schaefer: MSY = rK/4)

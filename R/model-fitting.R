@@ -27,12 +27,29 @@ NULL
 #'     \item{process_noise}{Logical, enable state-space process deviations as
 #'       RTMB random effects integrated with the Laplace approximation
 #'       (default: FALSE).}
+#'     \item{process_error_structure}{Character, one of \code{"iid"}
+#'       (default) or \code{"ar1"}. Applies only when
+#'       \code{process_noise = TRUE}.}
+#'     \item{env_covariates}{Optional character vector of environmental
+#'       covariate column names expected in \code{data$env_data}. When
+#'       supplied, linear covariate effects are included in biomass dynamics.}
+#'     \item{env_lag}{Non-negative integer lag (years) applied to
+#'       environmental covariates (default: 0).}
+#'     \item{env_scale}{Logical, center and scale covariates before fitting
+#'       (default: TRUE).}
 #'     \item{n_starts}{Integer, number of random restarts (default: 1).
 #'       When > 1, the optimizer is run from \code{n_starts} different
 #'       starting vectors (the original plus jittered versions) and the
 #'       run with the lowest objective is retained.}
 #'     \item{jitter_sd}{Numeric, standard deviation of log-normal jitter
 #'       applied to starting values for multi-start (default: 0.2).}
+#'     \item{priors}{Optional named list of priors on model parameters.
+#'       Each element is a list with \code{dist} and distribution-specific
+#'       fields. Supported distributions are:\cr
+#'       \code{normal}: \code{list(dist = "normal", mean = ..., sd = ...)}\cr
+#'       \code{lognormal}: \code{list(dist = "lognormal", meanlog = ..., sdlog = ...)}\cr
+#'       Parameter names can be supplied in natural form (e.g. \code{"r"},
+#'       \code{"K"}) or log form (e.g. \code{"log_r"}, \code{"log_K"}).}
 #'   }
 #'
 #' @return ProductionModel object with fitted results
@@ -67,6 +84,17 @@ NULL
 #' # Fit model
 #' model_fit <- fit_pella_tomlinson_model(data_list)
 #'
+#' # Fit model with informative priors on r and K
+#' fit_pr <- fit_pella_tomlinson_model(
+#'   data_list,
+#'   options = list(
+#'     priors = list(
+#'       r = list(dist = "lognormal", meanlog = log(0.2), sdlog = 0.4),
+#'       K = list(dist = "lognormal", meanlog = log(6000), sdlog = 0.5)
+#'     )
+#'   )
+#' )
+#'
 #' # View results
 #' print(model_fit)
 #' }
@@ -77,9 +105,36 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   default_options <- list(
     silent = TRUE,
     control = list(eval.max = 1000, iter.max = 500),
-    validate_data = TRUE
+    validate_data = TRUE,
+    process_noise = FALSE,
+    process_error_structure = "iid",
+    env_covariates = NULL,
+    env_lag = 0,
+    env_scale = TRUE,
+    priors = NULL
   )
   options <- modifyList(default_options, options)
+
+  use_process_noise <- isTRUE(options$process_noise)
+  process_error_structure <- match.arg(
+    as.character(options$process_error_structure %||% "iid"),
+    c("iid", "ar1")
+  )
+
+  env_covariates <- options$env_covariates
+  if (is.null(env_covariates)) {
+    env_covariates <- character(0)
+  }
+  if (!is.character(env_covariates)) {
+    stop("options$env_covariates must be NULL or a character vector")
+  }
+  env_covariates <- unique(env_covariates[nzchar(env_covariates)])
+
+  env_lag <- as.integer(options$env_lag %||% 0)
+  if (!is.finite(env_lag) || length(env_lag) != 1 || env_lag < 0) {
+    stop("options$env_lag must be a single non-negative integer")
+  }
+  env_scale <- isTRUE(options$env_scale)
 
   # Input validation
   if (!is.list(data)) {
@@ -131,6 +186,21 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     if (!is.null(data$movement$attractiveness)) processed_data$attractiveness <- data$movement$attractiveness
     if (!is.null(data$movement$movement_rate)) processed_data$movement_rate <- data$movement$movement_rate
     if (!is.null(data$movement$decay)) processed_data$decay <- data$movement$decay
+  }
+
+  # Optional environmental covariates used in biomass transition equation
+  env_info <- .prepare_environmental_covariates(
+    env_data = data$env_data,
+    years = processed_data$years,
+    areas = processed_data$areas %||% "A1",
+    covariate_names = env_covariates,
+    lag = env_lag,
+    scale_covariates = env_scale
+  )
+  if (!is.null(env_info)) {
+    processed_data$env_array <- env_info$env_array
+    processed_data$env_covariate_names <- env_info$covariate_names
+    processed_data$env_scaling <- env_info$scaling
   }
 
   # Generate starting values if not provided
@@ -189,7 +259,6 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   if (n_areas == 1 && !has_labels) {
     a <- areas[1]
     q_key <- paste0("log_q_", a)
-    b0_key <- paste0("log_b0_", a) # after rename_dots, lowercase possible
     b0_key2 <- paste0("log_B0_", a)
     if ("log_q" %in% names(params_init) && !q_key %in% names(params_init)) {
       params_init[[q_key]] <- params_init[["log_q"]]
@@ -199,6 +268,19 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
       params_init[[b0_key2]] <- params_init[["log_B0"]]
       params_init[["log_B0"]] <- NULL
     }
+  }
+
+  # Add default starting values for optional environmental effects and AR1.
+  if (!is.null(processed_data$env_covariate_names)) {
+    for (cov_name in processed_data$env_covariate_names) {
+      beta_name <- paste0("beta_", cov_name)
+      if (!beta_name %in% names(params_init)) {
+        params_init[[beta_name]] <- 0
+      }
+    }
+  }
+  if (use_process_noise && identical(process_error_structure, "ar1") && !"theta_rho" %in% names(params_init)) {
+    params_init[["theta_rho"]] <- atanh(0.2)
   }
 
   # catch as matrix [n_years x n_areas] always
@@ -220,13 +302,19 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   }
 
   rtmb_data <- list(
-    n_years   = n_years,
-    n_areas   = n_areas,
-    areas     = areas,
+    n_years = n_years,
+    n_areas = n_areas,
+    areas = areas,
     catch_mat = catch_mat,
-    cpue_obs  = cpue_obs,
-    labels    = if (has_labels) processed_data$labels else NULL
+    cpue_obs = cpue_obs,
+    labels = if (has_labels) processed_data$labels else NULL,
+    process_error_structure = process_error_structure
   )
+
+  if (!is.null(processed_data$env_array)) {
+    rtmb_data$env_array <- processed_data$env_array
+    rtmb_data$env_covariate_names <- processed_data$env_covariate_names
+  }
 
   # Attach movement data
   if (!is.null(processed_data$movement_rate)) {
@@ -245,7 +333,6 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   rtmb_parms <- as.list(unlist(params_init))
 
   # Handle process noise / random effects
-  use_process_noise <- isTRUE(options$process_noise)
   if (use_process_noise) {
     # Add proc_dev random effects [n_years-1 x n_areas]
     rtmb_parms$proc_dev <- matrix(0, n_years - 1, n_areas)
@@ -272,6 +359,15 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
       if (is.null(rtmb_parms[[fn]])) rtmb_parms[[fn]] <- unname(fixed[[fn]])
       map_list[[fn]] <- factor(NA)
     }
+  }
+
+  priors <- .prepare_model_priors(
+    priors = options$priors,
+    rtmb_parms = rtmb_parms,
+    areas = areas
+  )
+  if (!is.null(priors)) {
+    rtmb_data$priors <- priors
   }
 
   # ---- Create RTMB AD object ----------------------------------------
@@ -371,6 +467,10 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   }
   # Keep only scalar parameters (exclude proc_dev, etc.)
   scalar_par_names <- grep("^(log_r|log_K|log_m|log_sigma|log_q|log_B0)", names(full_log_par), value = TRUE)
+  scalar_par_names <- unique(c(
+    scalar_par_names,
+    grep("^(beta_|theta_rho)$", names(full_log_par), value = TRUE)
+  ))
   log_par_scalar <- full_log_par[scalar_par_names]
   # Rename back to dot-separated for backward compatibility.
   # Only convert area/label suffixes, NOT core parameter names like log_K.
@@ -432,29 +532,37 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   # Package results
   results_list <- list(
-    parameters          = fitted_params,
-    std_errors          = std_errors,
-    biomass             = B_est,
-    biomass_se          = biomass_se,
-    harvest_rate        = hr_est,
-    fitted_cpue         = fc_est,
-    residuals           = residuals,
-    msy                 = ref_points$msy,
-    bmsy                = ref_points$bmsy,
-    fmsy                = ref_points$fmsy,
-    opt_par             = opt_result$par,
-    likelihood          = opt_result$objective,
-    convergence         = opt_result$convergence,
+    parameters = fitted_params,
+    std_errors = std_errors,
+    biomass = B_est,
+    biomass_se = biomass_se,
+    harvest_rate = hr_est,
+    fitted_cpue = fc_est,
+    residuals = residuals,
+    msy = ref_points$msy,
+    bmsy = ref_points$bmsy,
+    fmsy = ref_points$fmsy,
+    opt_par = opt_result$par,
+    likelihood = opt_result$objective,
+    convergence = opt_result$convergence,
     convergence_message = opt_result$message,
-    fitting_time        = fitting_time,
-    hessian_valid       = hessian_valid,
-    n_parameters        = n_est_pars,
-    n_observations      = n_obs,
-    aic                 = 2 * n_est_pars + 2 * opt_result$objective,
-    bic                 = log(n_obs) * n_est_pars + 2 * opt_result$objective,
-    process_noise       = use_process_noise,
-    rtmb_obj            = obj,
-    sdreport            = sdr
+    fitting_time = fitting_time,
+    hessian_valid = hessian_valid,
+    n_parameters = n_est_pars,
+    n_observations = n_obs,
+    aic = 2 * n_est_pars + 2 * opt_result$objective,
+    bic = log(n_obs) * n_est_pars + 2 * opt_result$objective,
+    process_noise = use_process_noise,
+    process_error_structure = if (use_process_noise) process_error_structure else "none",
+    rho = fitted_params[["rho"]] %||% NA_real_,
+    env_effects = {
+      env_idx <- grepl("^beta[._]", names(fitted_params))
+      if (any(env_idx)) fitted_params[env_idx] else NULL
+    },
+    env_scaling = processed_data$env_scaling %||% NULL,
+    priors = priors,
+    rtmb_obj = obj,
+    sdreport = sdr
   )
 
   # Create ProductionModel S3 object
@@ -477,7 +585,8 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
         areas = processed_data$areas,
         catch = processed_data$catch,
         cpue = processed_data$cpue,
-        effort = effort
+        effort = effort,
+        env_scaling = processed_data$env_scaling %||% NULL
       ),
       results = results_list,
       fitted = TRUE,
@@ -488,6 +597,191 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   )
 
   return(fitted_model)
+}
+
+.prepare_model_priors <- function(priors, rtmb_parms, areas) {
+  if (is.null(priors)) {
+    return(NULL)
+  }
+
+  if (!is.list(priors) || is.null(names(priors)) || any(names(priors) == "")) {
+    stop("options$priors must be a named list of prior specifications")
+  }
+
+  normalized <- vector("list", length(priors))
+  idx <- 0L
+
+  for (param_name in names(priors)) {
+    spec <- priors[[param_name]]
+    if (!is.list(spec)) {
+      stop("Prior for '", param_name, "' must be supplied as a list")
+    }
+
+    fit_param <- .normalize_prior_parameter_name(param_name, rtmb_parms, areas)
+    dist <- spec$dist %||% spec$distribution
+    if (is.null(dist) || !is.character(dist) || length(dist) != 1) {
+      stop("Prior for '", param_name, "' must supply 'dist' or 'distribution'")
+    }
+    dist <- tolower(dist)
+
+    idx <- idx + 1L
+    if (dist %in% c("normal", "gaussian")) {
+      mean <- spec$mean
+      sd <- spec$sd
+      if (!is.numeric(mean) || length(mean) != 1 || !is.finite(mean)) {
+        stop("Normal prior for '", param_name, "' must supply a finite scalar 'mean'")
+      }
+      if (!is.numeric(sd) || length(sd) != 1 || !is.finite(sd) || sd <= 0) {
+        stop("Normal prior for '", param_name, "' must supply a positive finite scalar 'sd'")
+      }
+      normalized[[idx]] <- list(param = fit_param, dist = "normal", mean = mean, sd = sd)
+    } else if (dist == "lognormal") {
+      meanlog <- spec$meanlog
+      sdlog <- spec$sdlog
+      if (!grepl("^log_", fit_param)) {
+        stop("Lognormal priors are only supported for log-scale parameters; use a normal prior for '", param_name, "'")
+      }
+      if (!is.numeric(meanlog) || length(meanlog) != 1 || !is.finite(meanlog)) {
+        stop("Lognormal prior for '", param_name, "' must supply a finite scalar 'meanlog'")
+      }
+      if (!is.numeric(sdlog) || length(sdlog) != 1 || !is.finite(sdlog) || sdlog <= 0) {
+        stop("Lognormal prior for '", param_name, "' must supply a positive finite scalar 'sdlog'")
+      }
+      normalized[[idx]] <- list(param = fit_param, dist = "lognormal", meanlog = meanlog, sdlog = sdlog)
+    } else {
+      stop(
+        "Unsupported prior distribution '", dist, "' for '", param_name,
+        "'. Supported distributions are 'normal' and 'lognormal'"
+      )
+    }
+  }
+
+  normalized
+}
+
+.normalize_prior_parameter_name <- function(param_name, rtmb_parms, areas) {
+  raw_name <- gsub("\\.", "_", param_name)
+  raw_name <- sub("^log_B_initial$", "log_B0", raw_name)
+  raw_name <- sub("^B_initial$", "B0", raw_name)
+  raw_name <- sub("^log_B_initial_", "log_B0_", raw_name)
+  raw_name <- sub("^B_initial_", "B0_", raw_name)
+  candidates <- raw_name
+
+  if (!grepl("^log_", raw_name)) {
+    candidates <- c(candidates, paste0("log_", raw_name))
+  }
+
+  if (length(areas) == 1L) {
+    area_name <- areas[1]
+    if (raw_name %in% c("q", "B0", "log_q", "log_B0")) {
+      prefixed <- if (grepl("^log_", raw_name)) raw_name else paste0("log_", raw_name)
+      candidates <- c(candidates, paste0(prefixed, "_", area_name))
+    }
+  }
+
+  matches <- unique(candidates[candidates %in% names(rtmb_parms)])
+  if (length(matches) == 0) {
+    stop("Prior parameter '", param_name, "' does not match any fitted parameter")
+  }
+
+  matches[1]
+}
+
+.prepare_environmental_covariates <- function(env_data,
+                                              years,
+                                              areas,
+                                              covariate_names,
+                                              lag = 0,
+                                              scale_covariates = TRUE) {
+  if (length(covariate_names) == 0) {
+    return(NULL)
+  }
+  if (is.null(env_data)) {
+    stop("data$env_data is required when options$env_covariates is supplied")
+  }
+
+  env_data <- as.data.frame(env_data, stringsAsFactors = FALSE)
+  if (!all(c("year", covariate_names) %in% names(env_data))) {
+    missing_cols <- setdiff(c("year", covariate_names), names(env_data))
+    stop("env_data is missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  if (!"area" %in% names(env_data)) {
+    env_data[["area"]] <- areas[1]
+  }
+
+  env_data[["year"]] <- as.integer(env_data[["year"]])
+  env_data[["area"]] <- as.character(env_data[["area"]])
+  env_data <- env_data[env_data[["year"]] %in% years & env_data[["area"]] %in% areas, , drop = FALSE]
+  if (nrow(env_data) == 0) {
+    stop("No environmental covariate records overlap model years/areas")
+  }
+
+  clean_names <- gsub("[^A-Za-z0-9]", "_", covariate_names)
+  clean_names <- make.names(clean_names, unique = TRUE)
+
+  n_years <- length(years)
+  n_areas <- length(areas)
+  n_cov <- length(covariate_names)
+  env_full <- array(NA_real_, dim = c(n_years, n_areas, n_cov), dimnames = list(year = years, area = areas, covariate = clean_names))
+
+  for (ic in seq_len(n_cov)) {
+    cov <- covariate_names[ic]
+    for (ia in seq_len(n_areas)) {
+      area_i <- areas[ia]
+      rows <- env_data[["area"]] == area_i
+      if (!any(rows)) {
+        rows <- rep(TRUE, nrow(env_data))
+      }
+      idx <- match(years, env_data[["year"]][rows])
+      vals <- env_data[[cov]][rows][idx]
+      vals <- as.numeric(vals)
+      if (all(!is.finite(vals))) {
+        stop("Environmental covariate '", cov, "' has no finite values for area '", area_i, "'")
+      }
+      if (any(!is.finite(vals))) {
+        fill <- mean(vals[is.finite(vals)], na.rm = TRUE)
+        vals[!is.finite(vals)] <- fill
+      }
+      env_full[, ia, ic] <- vals
+    }
+  }
+
+  n_trans <- max(n_years - 1L, 1L)
+  env_array <- array(0, dim = c(n_trans, n_areas, n_cov), dimnames = list(transition = seq_len(n_trans), area = areas, covariate = clean_names))
+  for (t in seq_len(n_trans)) {
+    src_idx <- max(1L, t - lag)
+    env_array[t, , ] <- env_full[src_idx, , ]
+  }
+
+  scaling <- NULL
+  if (scale_covariates) {
+    centers <- numeric(n_cov)
+    scales <- numeric(n_cov)
+    for (ic in seq_len(n_cov)) {
+      vals <- as.numeric(env_array[, , ic])
+      centers[ic] <- mean(vals)
+      scales[ic] <- stats::sd(vals)
+      if (!is.finite(scales[ic]) || scales[ic] <= 0) {
+        scales[ic] <- 1
+      }
+      env_array[, , ic] <- (env_array[, , ic] - centers[ic]) / scales[ic]
+    }
+    scaling <- list(
+      names = clean_names,
+      center = centers,
+      scale = scales,
+      lag = lag
+    )
+  } else {
+    scaling <- list(names = clean_names, center = rep(0, n_cov), scale = rep(1, n_cov), lag = lag)
+  }
+
+  list(
+    env_array = env_array,
+    covariate_names = clean_names,
+    scaling = scaling
+  )
 }
 
 #' Preprocess Model Data
@@ -613,10 +907,22 @@ preprocess_model_data <- function(cpue_data, catch_data) {
 #'
 #' @keywords internal
 transform_parameters_to_natural <- function(log_params) {
-  natural_params <- exp(log_params)
+  natural_params <- log_params
+  nms <- names(log_params)
 
-  # Rename to natural scale parameter names
-  names(natural_params) <- gsub("^log_", "", names(natural_params))
+  if (length(log_params) > 0) {
+    log_idx <- grepl("^log_", nms)
+    if (any(log_idx)) {
+      natural_params[log_idx] <- exp(log_params[log_idx])
+      nms[log_idx] <- sub("^log_", "", nms[log_idx])
+    }
+    if ("theta_rho" %in% nms) {
+      rho_idx <- which(nms == "theta_rho")[1]
+      natural_params[rho_idx] <- tanh(log_params[rho_idx])
+      nms[rho_idx] <- "rho"
+    }
+  }
+  names(natural_params) <- nms
 
   # Backward-compatibility: if only one area and parameters are suffixed, also provide unsuffixed aliases
   if (!is.null(names(natural_params))) {
@@ -629,6 +935,21 @@ transform_parameters_to_natural <- function(log_params) {
     }
     if (length(b0_like) == 1 && !("B0" %in% pnames)) {
       natural_params <- c(natural_params, B0 = unname(natural_params[b0_like]))
+    }
+
+    # Clarity alias: expose B_initial alongside B0 without breaking backward compatibility
+    pnames <- names(natural_params)
+    if ("B0" %in% pnames && !("B_initial" %in% pnames)) {
+      natural_params <- c(natural_params, B_initial = unname(natural_params["B0"]))
+    }
+    b0_named <- grep("^B0\\.[A-Za-z0-9_]+$", pnames, value = TRUE)
+    if (length(b0_named) > 0) {
+      for (nm in b0_named) {
+        alias_nm <- sub("^B0\\.", "B_initial.", nm)
+        if (!(alias_nm %in% names(natural_params))) {
+          natural_params <- c(natural_params, setNames(unname(natural_params[nm]), alias_nm))
+        }
+      }
     }
   }
 
@@ -651,6 +972,7 @@ calculate_model_results <- function(parameters, data) {
   areas <- if (!is.null(data$areas)) data$areas else if (is.matrix(data$cpue)) colnames(data$cpue) else "A1"
   n_areas <- if (multi_area) length(areas) else 1L
   has_labels <- !is.null(data$labels)
+  has_env <- !is.null(data$env_array)
 
   # Extract global parameters
   r <- parameters[["r"]]
@@ -738,11 +1060,40 @@ calculate_model_results <- function(parameters, data) {
 
   # Biomass recursion per area
   biomass[1, ] <- as.numeric(B0_vec)
+
+  env_term <- matrix(0, nrow = max(n_years - 1, 1), ncol = n_areas)
+  if (has_env) {
+    env_array <- data$env_array
+    cov_names <- dimnames(env_array)[[3]]
+    beta_vec <- numeric(length(cov_names))
+    for (ic in seq_along(cov_names)) {
+      key_u <- paste0("beta_", cov_names[ic])
+      key_d <- paste0("beta.", cov_names[ic])
+      if (!is.null(names(parameters)) && key_u %in% names(parameters)) {
+        beta_vec[ic] <- parameters[[key_u]]
+      } else if (!is.null(names(parameters)) && key_d %in% names(parameters)) {
+        beta_vec[ic] <- parameters[[key_d]]
+      } else {
+        beta_vec[ic] <- 0
+      }
+    }
+    for (t in seq_len(n_years - 1)) {
+      for (ia in seq_len(n_areas)) {
+        env_term[t, ia] <- sum(env_array[t, ia, ] * beta_vec)
+      }
+    }
+  }
+
   for (t in 1:(n_years - 1)) {
     Bt <- biomass[t, ]
     production <- ifelse(Bt > 0 & K > 0 & m > 0, r * Bt * (1 - (Bt / K)^(m - 1)) / m, 0)
     production[!is.finite(production)] <- 0
-    biomass[t + 1, ] <- pmax(Bt + production - catch_mat[t, ], 0.01)
+    B_det <- pmax(Bt + production - catch_mat[t, ], 0.01)
+    if (has_env) {
+      biomass[t + 1, ] <- pmax(exp(log(B_det) + env_term[t, ]), 0.01)
+    } else {
+      biomass[t + 1, ] <- B_det
+    }
   }
 
   # Apply gravity movement redistribution (if present in data)
