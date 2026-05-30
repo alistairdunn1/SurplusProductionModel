@@ -25,6 +25,16 @@ If NULL, starting values are generated automatically.}
 \item{process_noise}{Logical, enable state-space process deviations as
 RTMB random effects integrated with the Laplace approximation
 (default: FALSE).}
+\item{process_error_structure}{Character, one of \code{"iid"}
+(default) or \code{"ar1"}. Applies only when
+\code{process_noise = TRUE}.}
+\item{env_covariates}{Optional character vector of environmental
+covariate column names expected in \code{data$env_data}. When
+supplied, linear covariate effects are included in biomass dynamics.}
+\item{env_lag}{Non-negative integer lag (years) applied to
+environmental covariates (default: 0).}
+\item{env_scale}{Logical, center and scale covariates before fitting
+(default: TRUE).}
 \item{n_starts}{Integer, number of random restarts (default: 1).
 When > 1, the optimizer is run from \code{n_starts} different
 starting vectors (the original plus jittered versions) and the

@@ -4,21 +4,25 @@
 \alias{calculate_reference_points}
 \title{Calculate Reference Points from Fitted Model}
 \usage{
-calculate_reference_points(model_fit, biomass_target = NULL, baseline = c("auto", "B0", "K"))
+calculate_reference_points(
+  model_fit,
+  biomass_target = NULL,
+  baseline = c("auto", "B0", "K")
+)
 }
 \arguments{
 \item{model_fit}{A fitted ProductionModel object (with fitted = TRUE)}
 
 \item{biomass_target}{Optional numeric vector of target biomass fractions.
-For example, \code{0.4} requests \code{B_40\%} and \code{F_40\%} style
-reference points. If omitted, uses package default from
+For example, \code{0.4} requests \verb{B_40\%B0} and \verb{F_40\%B0} style reference
+points. If omitted, uses package default from
 \code{get_reference_point_defaults()}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
-for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or
-\code{"K"}. In \code{"auto"} mode, the function uses fitted \code{B0} if
-available and otherwise falls back to \code{K}. If omitted, uses
-package default from \code{get_reference_point_defaults()}.}
+for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or \code{"K"}. In
+\code{"auto"} mode, the function uses fitted \code{B0} if available and otherwise
+falls back to \code{K}. If omitted, uses package default from
+\code{get_reference_point_defaults()}.}
 }
 \value{
 Named list containing reference points:
@@ -47,12 +51,11 @@ FMSY = MSY / BMSY
 For user-defined biomass fractions \code{x}, the function also calculates
 analytical depletion-based targets:
 
-\code{B_x = x * B_base}
+B_x = x * B_base
 
-\code{F_x = r / m * (1 - (B_x / K)^(m - 1))}
+F_x = r / m * (1 - (B_x / K)^(m - 1))
 
-where \code{B_base} is either fitted \code{B0} or \code{K}, depending on
-\code{baseline}.
+where \code{B_base} is either fitted \code{B0} or \code{K}, depending on \code{baseline}.
 
 For special cases:
 \itemize{
@@ -73,11 +76,11 @@ print(ref_points)
 msy <- ref_points$msy
 bmsy <- ref_points$bmsy
 
-# Calculate B_40%B0 and F_40%B0 style targets
+# Calculate B_40\%B0 and F_40\%B0 style targets
 target_ref_points <- calculate_reference_points(
-	fitted_model,
-	biomass_target = 0.4,
-	baseline = "B0"
+  fitted_model,
+  biomass_target = 0.4,
+  baseline = "B0"
 )
 }
 

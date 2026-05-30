@@ -18,7 +18,7 @@ If return_details=FALSE (default), returns TRUE if valid or stops with error.
 If return_details=TRUE, returns a list with validation results and diagnostics.
 }
 \description{
-Comprehensive validation of parameters for the Pella-Tomlinson surplus production
+Validation of parameters for the Pella-Tomlinson surplus production
 model, ensuring biological plausibility and mathematical constraints.
 }
 \details{

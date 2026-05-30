@@ -4,7 +4,7 @@
 \alias{print.ProductionModel}
 \title{Print Method for ProductionModel}
 \usage{
-\method{print}{ProductionModel}(x, ...)
+\method{print}{ProductionModel}(x, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...)
 }
 \arguments{
 \item{x}{A ProductionModel object}

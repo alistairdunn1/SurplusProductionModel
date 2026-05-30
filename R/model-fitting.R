@@ -554,7 +554,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     bic = log(n_obs) * n_est_pars + 2 * opt_result$objective,
     process_noise = use_process_noise,
     process_error_structure = if (use_process_noise) process_error_structure else "none",
-    rho = fitted_params[["rho"]] %||% NA_real_,
+    rho = if ("rho" %in% names(fitted_params)) fitted_params[["rho"]] else NA_real_,
     env_effects = {
       env_idx <- grepl("^beta[._]", names(fitted_params))
       if (any(env_idx)) fitted_params[env_idx] else NULL

@@ -40,7 +40,7 @@ If return_details=FALSE (default), returns TRUE if valid or stops with error.
 If return_details=TRUE, returns a list with validation results and diagnostics.
 }
 \description{
-Comprehensive validation of catch data for Antarctic toothfish stock assessment,
+Validation of catch data for Antarctic toothfish stock assessment,
 including biological plausibility checks, temporal consistency, and data quality
 assessment.
 }

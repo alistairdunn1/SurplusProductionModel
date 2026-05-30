@@ -48,12 +48,11 @@ using the Laplace approximation instead of sampling them.
 Default: \code{FALSE} (full Bayesian).}
 
 \item{biomass_target}{Optional numeric vector of target biomass fractions
-used to add depletion-based posterior summaries such as \code{"B_40\%K"}
-or \code{"F_40\%B0"}.}
+used to add depletion-based posterior summaries such as
+\code{"B_40\%K"} or \code{"F_40\%B0"}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
-for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or
-\code{"K"}.}
+for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or \code{"K"}.}
 
 \item{...}{Additional arguments passed to
 \code{\link[rstan]{sampling}} (e.g. \code{control},
@@ -108,7 +107,7 @@ print(bf)
 plot(bf)
 plot(bf, type = "pairs")
 
-# Include depletion-based posterior targets (e.g., B_40%K, F_40%K)
+# Include depletion-based posterior targets (e.g., B_40\%K, F_40\%K)
 bf_targets <- bayesian_fit(
   fitted_model,
   chains = 2,
@@ -116,7 +115,7 @@ bf_targets <- bayesian_fit(
   biomass_target = 0.4,
   baseline = "K"
 )
-subset(bf_targets$summary, parameter %in% c("B_40%K", "F_40%K"))
+subset(bf_targets$summary, parameter \%in\% c("B_40\%K", "F_40\%K"))
 }
 
 }

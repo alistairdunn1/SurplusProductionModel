@@ -4,7 +4,7 @@
 \alias{summary.ProductionModel}
 \title{Summary Method for ProductionModel}
 \usage{
-\method{summary}{ProductionModel}(object, ...)
+\method{summary}{ProductionModel}(object, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...)
 }
 \arguments{
 \item{object}{A ProductionModel object}

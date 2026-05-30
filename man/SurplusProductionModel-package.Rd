@@ -4,12 +4,12 @@
 \name{SurplusProductionModel-package}
 \alias{SurplusProductionModel}
 \alias{SurplusProductionModel-package}
-\title{SurplusProductionModel: Pella-Tomlinson Surplus Production Model
+\title{SurplusProductionModel: Pella-Tomlinson Surplus Production Model}
 \description{
-This package implements a spatial Pella-Tomlinson surplus production model. 
-It also supports an optional state-space formulation with process error for 
-model fitting. It serves as the operating model foundation for the Management
-Strategy Evaluation (MSE) framework.
+This package implements a spatial Pella-Tomlinson surplus production model. It also supports
+an optional state-space formulation with process error for model fitting. It
+serves as the operating model foundation for the ATO rTMB project's
+Management Strategy Evaluation (MSE) framework.
 }
 \section{Key Features}{
 
@@ -88,6 +88,6 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Alistair Dunn \email{alistair.dunn@example.com} (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
+\strong{Maintainer}: Alistair Dunn \email{alistair.dunn@oceanenvironmental.co.nz} (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
 
 }

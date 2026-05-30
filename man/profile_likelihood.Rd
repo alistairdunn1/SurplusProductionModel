@@ -41,8 +41,7 @@ used to add depletion-based derived quantities such as \code{"B_40\%K"}
 or \code{"F_40\%B0"}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
-for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or
-\code{"K"}.}
+for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or \code{"K"}.}
 
 \item{verbose}{Logical, print progress messages (default: FALSE).}
 }
@@ -95,10 +94,10 @@ prof_rK <- profile_likelihood(fitted_model,
                                parameters = c("r", "K"),
                                n_points = 30)
 
-# Depletion-based derived quantities (e.g., B_40%K and F_40%K)
+# Depletion-based derived quantities (e.g., B_40\%K and F_40\%K)
 prof_targets <- profile_likelihood(
   fitted_model,
-  parameters = c("B_40%K", "F_40%K"),
+  parameters = c("B_40\%K", "F_40\%K"),
   biomass_target = 0.4,
   baseline = "K"
 )

@@ -40,7 +40,7 @@ If return_details=FALSE (default), returns TRUE if valid or stops with error.
 If return_details=TRUE, returns a list with validation results and diagnostics.
 }
 \description{
-Comprehensive validation of CPUE (Catch Per Unit Effort) data for Antarctic
+Validation of CPUE (Catch Per Unit Effort) data for Antarctic
 toothfish stock assessment, including data quality checks, outlier detection,
 and consistency verification.
 }
