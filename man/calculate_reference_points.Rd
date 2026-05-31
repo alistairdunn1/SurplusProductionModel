@@ -66,6 +66,14 @@ For special cases:
 Current status is calculated relative to reference points using the
 final year biomass estimate from the fitted model.
 }
+\references{
+Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
+
+Schaefer, M. B. (1954). Some aspects of the dynamics of populations important to the management of the commercial marine fisheries. Inter-American Tropical Tuna Commission Bulletin 1, 27-56.
+
+Fox, W. W., Jr. (1970). An exponential surplus-yield model for optimizing exploited fish populations. Transactions of the American Fisheries Society 99(1), 80-88.
+}
+
 \examples{
 \dontrun{
 # Assuming you have a fitted model

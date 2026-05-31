@@ -106,6 +106,12 @@ get_reference_point_defaults <- function() {
 #' Current status is calculated relative to reference points using the
 #' final year biomass estimate from the fitted model.
 #'
+#' @references Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
+#'
+#' Schaefer, M. B. (1954). Some aspects of the dynamics of populations important to the management of the commercial marine fisheries. Inter-American Tropical Tuna Commission Bulletin 1, 27-56.
+#'
+#' Fox, W. W., Jr. (1970). An exponential surplus-yield model for optimizing exploited fish populations. Transactions of the American Fisheries Society 99(1), 80-88.
+#'
 #' @examples
 #' \dontrun{
 #' # Assuming you have a fitted model
@@ -294,7 +300,9 @@ calculate_reference_points_from_parameters <- function(parameters,
 }
 
 validate_biomass_target <- function(biomass_target) {
-  if (is.null(biomass_target)) return(invisible(NULL))
+  if (is.null(biomass_target)) {
+    return(invisible(NULL))
+  }
 
   if (!is.numeric(biomass_target) || any(!is.finite(biomass_target))) {
     stop("biomass_target must be a numeric vector of finite biomass fractions")
@@ -428,13 +436,19 @@ extract_named_reference_value <- function(reference_points, name) {
   }
 
   target_df <- reference_points$target_reference_points
-  if (is.null(target_df) || nrow(target_df) == 0) return(NULL)
+  if (is.null(target_df) || nrow(target_df) == 0) {
+    return(NULL)
+  }
 
   b_idx <- match(name, target_df$biomass_name)
-  if (!is.na(b_idx)) return(target_df$biomass[b_idx])
+  if (!is.na(b_idx)) {
+    return(target_df$biomass[b_idx])
+  }
 
   f_idx <- match(name, target_df$f_name)
-  if (!is.na(f_idx)) return(target_df$fishing_mortality[f_idx])
+  if (!is.na(f_idx)) {
+    return(target_df$fishing_mortality[f_idx])
+  }
 
   NULL
 }

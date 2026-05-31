@@ -12,12 +12,12 @@
 
 ### Model Fitting
 
-- **Pella-Tomlinson production function** with flexible shape parameter (*m*)
-  - Schaefer model (*m* = 2): symmetric production curve
-  - Fox model (*m* = 1): asymmetric production curve with peak at lower biomass
+- **Pella-Tomlinson production function** with flexible shape parameter (*m*) (Pella and Tomlinson 1969)
+  - Schaefer model (*m* = 2): symmetric production curve (Schaefer 1954)
+  - Fox model (*m* = 1): asymmetric production curve with peak at lower biomass (Fox 1970)
 - **Optional state-space framework** with process error in biomass dynamics when `options$process_noise = TRUE`, plus observation error in CPUE
 - **RTMB integration** for automatic differentiation and fast optimization via `nlminb`
-- **Spatial structure** supporting multiple management areas with optional movement
+- **Spatial structure** supporting multiple management areas with optional movement; the movement kernel follows a gravity formulation (Turchin 1998)
 - **Multi-index support** for multiple CPUE series per area
 
 ### Convergence Diagnostics

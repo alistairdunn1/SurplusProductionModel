@@ -73,6 +73,8 @@ NULL
 #' In both modes, parameters are log-transformed where needed to enforce
 #' positivity constraints.
 #'
+#' @references Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
+#'
 #' @examples
 #' \dontrun{
 #' # Prepare data
