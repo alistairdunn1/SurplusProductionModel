@@ -1,9 +1,5 @@
 # SurplusProductionModel
 
-[![R-CMD-check](https://github.com/alistairdunn1/SurplusProductionModel/workflows/R-CMD-check/badge.svg)](https://github.com/alistairdunn1/SurplusProductionModel/actions)
-[![codecov](https://codecov.io/gh/alistairdunn1/SurplusProductionModel/branch/main/graph/badge.svg)](https://codecov.io/gh/alistairdunn1/SurplusProductionModel)
-[![pkgdown](https://github.com/alistairdunn1/SurplusProductionModel/actions/workflows/pkgdown.yaml/badge.svg)](https://alistairdunn1.github.io/SurplusProductionModel/)
-
 ## Overview
 
 `SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model for Antarctic toothfish (*Dissostichus mawsoni*) stock assessment. It supports an optional state-space formulation with process error for model fitting. This package serves as the operating model foundation for the the Surplus Production Model Management Strategy Evaluation (MSE) framework.
