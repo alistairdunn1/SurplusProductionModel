@@ -208,6 +208,8 @@ fitted.ProductionModel <- function(object, ...) {
 #' Print summary information about a ProductionModel object.
 #'
 #' @param x A ProductionModel object
+#' @param biomass_target Optional target biomass ratio (for example, `0.4` for 40% of baseline biomass) used to report target reference points.
+#' @param baseline Baseline biomass used for target calculations. One of `"auto"`, `"B0"`, or `"K"`.
 #' @param ... Additional arguments (currently unused)
 #' @return Invisibly returns the object
 #' @export
@@ -231,10 +233,12 @@ print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto",
   if (length(x$data) > 0) {
     cat("Data Summary:\n")
     yrs <- x$data$years
-    cat("  Years:", range(yrs)[1], "-", range(yrs)[2],
-        "(", length(yrs), "years)\n")
+    cat(
+      "  Years:", range(yrs)[1], "-", range(yrs)[2],
+      "(", length(yrs), "years)\n"
+    )
     # Area / label counts
-    areas  <- x$data$areas
+    areas <- x$data$areas
     n_areas <- if (!is.null(areas)) length(areas) else 1L
     cat("  Areas:", n_areas)
     if (n_areas > 1) cat(" (", paste(areas, collapse = ", "), ")")
@@ -246,19 +250,25 @@ print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto",
     }
     ctch <- x$data$catch
     if (is.matrix(ctch)) {
-      cat("  Total catch range:", sprintf("%.0f - %.0f tonnes",
-          min(rowSums(ctch)), max(rowSums(ctch))), "\n")
+      cat("  Total catch range:", sprintf(
+        "%.0f - %.0f tonnes",
+        min(rowSums(ctch)), max(rowSums(ctch))
+      ), "\n")
     } else {
-      cat("  Catch range:", sprintf("%.0f - %.0f tonnes",
-          min(ctch), max(ctch)), "\n")
+      cat("  Catch range:", sprintf(
+        "%.0f - %.0f tonnes",
+        min(ctch), max(ctch)
+      ), "\n")
     }
     cat("\n")
   }
 
   if (x$fitted && length(x$results) > 0) {
-    cat("Convergence:",
-        ifelse(x$results$convergence == 0, "Success", "FAILED"),
-        "\n")
+    cat(
+      "Convergence:",
+      ifelse(x$results$convergence == 0, "Success", "FAILED"),
+      "\n"
+    )
     cat("Neg. log-likelihood:", sprintf("%.2f", x$results$likelihood), "\n")
     if (!is.null(x$results$aic)) {
       cat("AIC:", sprintf("%.2f", x$results$aic), "\n")
@@ -301,6 +311,8 @@ print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto",
 #' and per-area / per-index diagnostics.
 #'
 #' @param object A ProductionModel object
+#' @param biomass_target Optional target biomass ratio (for example, `0.4` for 40% of baseline biomass) used to report target reference points.
+#' @param baseline Baseline biomass used for target calculations. One of `"auto"`, `"B0"`, or `"K"`.
 #' @param ... Additional arguments (currently unused)
 #' @return Invisibly returns a list of summary components
 #' @export
@@ -320,25 +332,27 @@ summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c(
   }
 
   results <- object$results
-  params  <- object$parameters
-  se      <- results$std_errors
+  params <- object$parameters
+  se <- results$std_errors
 
   cat("Summary: Pella-Tomlinson Surplus Production Model\n")
   cat("=================================================\n\n")
 
   # ---- Data overview ----
-  yrs    <- object$data$years
-  areas  <- object$data$areas
+  yrs <- object$data$years
+  areas <- object$data$areas
   n_areas <- if (!is.null(areas)) length(areas) else 1L
-  cpue   <- object$data$cpue
+  cpue <- object$data$cpue
   has_labels <- is.array(cpue) && length(dim(cpue)) == 3
 
   cat("Data:\n")
   cat("  Years:", min(yrs), "-", max(yrs), "(", length(yrs), ")\n")
   cat("  Areas:", n_areas, "\n")
   if (has_labels) {
-    cat("  CPUE indices:", length(dimnames(cpue)[[3]]),
-        "(", paste(dimnames(cpue)[[3]], collapse = ", "), ")\n")
+    cat(
+      "  CPUE indices:", length(dimnames(cpue)[[3]]),
+      "(", paste(dimnames(cpue)[[3]], collapse = ", "), ")\n"
+    )
   }
   n_obs <- results$n_observations
   n_par <- results$n_parameters
@@ -351,7 +365,7 @@ summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c(
   pnames <- names(params)
   ptable <- data.frame(
     Parameter = pnames,
-    Estimate  = unname(params),
+    Estimate = unname(params),
     stringsAsFactors = FALSE
   )
   if (!is.null(se)) {
@@ -409,8 +423,10 @@ summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c(
           rv <- res[, a, l]
           rv <- rv[is.finite(rv)]
           if (length(rv) >= 3) {
-            cat(sprintf("  [%s, %s] mean=%.3f  sd=%.3f  n=%d\n",
-                        a, l, mean(rv), sd(rv), length(rv)))
+            cat(sprintf(
+              "  [%s, %s] mean=%.3f  sd=%.3f  n=%d\n",
+              a, l, mean(rv), sd(rv), length(rv)
+            ))
           }
         }
       }
@@ -419,8 +435,10 @@ summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c(
         rv <- res[, a]
         rv <- rv[is.finite(rv)]
         if (length(rv) >= 3) {
-          cat(sprintf("  [%s] mean=%.3f  sd=%.3f  n=%d\n",
-                      a, mean(rv), sd(rv), length(rv)))
+          cat(sprintf(
+            "  [%s] mean=%.3f  sd=%.3f  n=%d\n",
+            a, mean(rv), sd(rv), length(rv)
+          ))
         }
       }
     } else {

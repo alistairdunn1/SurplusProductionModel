@@ -7,6 +7,8 @@ Authors@R:
            email = "alistair.dunn@oceanenvironmental.co.nz", 
            role = c("aut", "cre"),
            comment = c(ORCID = "YOUR-ORCID-ID"))
+Author: Alistair Dunn [aut, cre]
+Maintainer: Alistair Dunn <alistair.dunn@oceanenvironmental.co.nz>
 Description: 
     A state-space spatial Pella-Tomlinson surplus production model. This 
     package provides the MSE foundation, implementing biomass-based 
