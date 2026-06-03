@@ -22,6 +22,8 @@ NULL
 #' @param options List of optimization options (optional):
 #'   \describe{
 #'     \item{silent}{Logical, suppress RTMB output (default: TRUE)}
+#'     \item{show_starting_values_message}{Logical, print a message when
+#'       starting values are generated automatically (default: TRUE).}
 #'     \item{control}{List of control parameters for nlminb}
 #'     \item{validate_data}{Logical, run data validation (default: TRUE)}
 #'     \item{process_noise}{Logical, enable state-space process deviations as
@@ -106,6 +108,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # Set default options
   default_options <- list(
     silent = TRUE,
+    show_starting_values_message = TRUE,
     control = list(eval.max = 1000, iter.max = 500),
     validate_data = TRUE,
     process_noise = FALSE,
@@ -208,7 +211,9 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # Generate starting values if not provided
   if (is.null(params_init)) {
     params_init <- generate_starting_values(processed_data)
-    message("Generated starting parameter values automatically")
+    if (isTRUE(options$show_starting_values_message)) {
+      message("Generated starting parameter values automatically")
+    }
   } else {
     # Validate provided starting values
     # Required globals
