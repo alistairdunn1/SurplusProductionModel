@@ -681,8 +681,7 @@ posterior_predictive_check <- function(bayes_fit, n_sims = 200L, seed = NULL) {
   # Extract observed CPUE
   obs_cpue <- model_fit$data$cpue
   if (is.null(obs_cpue)) {
-    # Fallback: try to extract from residuals + fitted
-    obs_cpue <- model_fit$results$fitted_cpue + model_fit$results$residuals
+    stop("Observed CPUE must be present in model_fit$data$cpue for posterior predictive checks")
   }
   obs_flat <- as.numeric(obs_cpue)
   obs_flat <- obs_flat[!is.na(obs_flat)]
@@ -703,7 +702,9 @@ posterior_predictive_check <- function(bayes_fit, n_sims = 200L, seed = NULL) {
 
     # Extract parameters for this draw
     sigma_obs <- .extract_draw_param(posterior, d, "sigma_obs", nat_names)
-    if (is.na(sigma_obs)) sigma_obs <- 0.1  # fallback
+    if (is.na(sigma_obs)) {
+      stop("Parameter 'sigma_obs' is missing from the posterior draws")
+    }
 
     # Get fitted CPUE from the model
     # (using the model's fitted CPUE as the expected value;
@@ -795,16 +796,8 @@ plot.ppc_result <- function(x, ...) {
 # ---- Helper: extract a named parameter from a posterior draw row ---------
 #' @keywords internal
 .extract_draw_param <- function(posterior, draw_idx, pname, nat_names) {
-  # Try exact match first
   idx <- match(pname, nat_names)
   if (!is.na(idx)) return(posterior[draw_idx, idx])
-
-  # Try with area suffix (e.g. sigma_obs might be sigma_obs.A1 in posterior)
-  candidates <- grep(paste0("^", pname), nat_names, value = TRUE)
-  if (length(candidates) > 0) {
-    idx <- match(candidates[1], nat_names)
-    if (!is.na(idx)) return(posterior[draw_idx, idx])
-  }
 
   NA_real_
 }

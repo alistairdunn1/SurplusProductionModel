@@ -6,6 +6,9 @@
 .RData
 .RDataTmp
 
+# Quarto temp files
+/.quarto/**
+
 # User-specific files
 .Ruserdata
 

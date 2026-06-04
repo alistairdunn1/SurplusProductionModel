@@ -13,7 +13,7 @@ NULL
 #'
 #' @param data List containing model data with elements:
 #'   \describe{
-#'     \item{cpue_data}{Data frame with columns: year, cpue, optional: area}
+#'     \item{cpue_data}{Data frame with columns: year, cpue, optional: area, label, and observation-uncertainty inputs such as cv, se, or obs_sd_log}
 #'     \item{catch_data}{Data frame with columns: year, catch, optional: area}
 #'     \item{movement}{optional list with movement inputs: distance_matrix (area by area matrix), attractiveness (named numeric by area)}
 #'   }
@@ -39,17 +39,31 @@ NULL
 #'       environmental covariates (default: 0).}
 #'     \item{env_scale}{Logical, center and scale covariates before fitting
 #'       (default: TRUE).}
+#'     \item{estimate_movement_rate}{Logical, estimate \code{movement_rate}
+#'       as a model parameter when movement inputs are supplied
+#'       (default: FALSE).}
+#'     \item{movement_rate_start}{Optional positive numeric starting value
+#'       for \code{movement_rate} when \code{estimate_movement_rate = TRUE}.
+#'       If NULL, the fitter uses \code{data$movement$movement_rate} when
+#'       provided, otherwise 0.12. Must lie in \code{(0, 1)}.}
+#'     \item{spinup_years}{Non-negative integer number of deterministic
+#'       pre-data years (zero catch) used to spin up biomass before the first
+#'       observation year (default: 50).}
 #'     \item{n_starts}{Integer, number of random restarts (default: 1).
 #'       When > 1, the optimizer is run from \code{n_starts} different
 #'       starting vectors (the original plus jittered versions) and the
 #'       run with the lowest objective is retained.}
 #'     \item{jitter_sd}{Numeric, standard deviation of log-normal jitter
 #'       applied to starting values for multi-start (default: 0.2).}
+#'     \item{area_k_shares}{Deprecated and ignored. Carrying capacity is now
+#'       estimated independently for each area in multi-area fits.}
 #'     \item{priors}{Optional named list of priors on model parameters.
 #'       Each element is a list with \code{dist} and distribution-specific
 #'       fields. Supported distributions are:\cr
 #'       \code{normal}: \code{list(dist = "normal", mean = ..., sd = ...)}\cr
 #'       \code{lognormal}: \code{list(dist = "lognormal", meanlog = ..., sdlog = ...)}\cr
+#'       \code{exponential}: \code{list(dist = "exponential", rate = ...)}
+#'       (applied on natural scale for log-transformed positive parameters)
 #'       Parameter names can be supplied in natural form (e.g. \code{"r"},
 #'       \code{"K"}) or log form (e.g. \code{"log_r"}, \code{"log_K"}).}
 #'   }
@@ -116,6 +130,10 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     env_covariates = NULL,
     env_lag = 0,
     env_scale = TRUE,
+    estimate_movement_rate = FALSE,
+    movement_rate_start = NULL,
+    spinup_years = 50L,
+    area_k_shares = NULL,
     priors = NULL
   )
   options <- modifyList(default_options, options)
@@ -140,6 +158,12 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     stop("options$env_lag must be a single non-negative integer")
   }
   env_scale <- isTRUE(options$env_scale)
+  estimate_movement_rate <- isTRUE(options$estimate_movement_rate)
+  movement_rate_start <- options$movement_rate_start
+  spinup_years <- as.integer(options$spinup_years %||% 0L)
+  if (!is.finite(spinup_years) || length(spinup_years) != 1 || spinup_years < 0) {
+    stop("options$spinup_years must be a single non-negative integer")
+  }
 
   # Input validation
   if (!is.list(data)) {
@@ -193,6 +217,53 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     if (!is.null(data$movement$decay)) processed_data$decay <- data$movement$decay
   }
 
+  if (!is.null(processed_data$areas)) {
+    area_levels <- as.character(processed_data$areas)
+
+    if (!is.null(processed_data$distance_matrix)) {
+      dm <- processed_data$distance_matrix
+      if (!is.matrix(dm)) {
+        stop("movement distance_matrix must be a matrix")
+      }
+      if (nrow(dm) != length(area_levels) || ncol(dm) != length(area_levels)) {
+        stop("movement distance_matrix dimensions must match the number of model areas")
+      }
+      dm_rn <- rownames(dm)
+      dm_cn <- colnames(dm)
+      if (!is.null(dm_rn) && !is.null(dm_cn)) {
+        if (!all(area_levels %in% dm_rn) || !all(area_levels %in% dm_cn)) {
+          stop("movement distance_matrix row/column names must include all model areas")
+        }
+        processed_data$distance_matrix <- dm[area_levels, area_levels, drop = FALSE]
+      }
+    }
+
+    if (!is.null(processed_data$attractiveness)) {
+      att <- processed_data$attractiveness
+      if (!is.numeric(att) || length(att) != length(area_levels)) {
+        stop("movement attractiveness must be a numeric vector with one value per model area")
+      }
+      if (!is.null(names(att))) {
+        if (!all(area_levels %in% names(att))) {
+          stop("movement attractiveness names must include all model areas")
+        }
+        processed_data$attractiveness <- as.numeric(att[area_levels])
+      } else {
+        processed_data$attractiveness <- as.numeric(att)
+      }
+    }
+  }
+
+  has_movement_inputs <- !is.null(processed_data$distance_matrix) &&
+    !is.null(processed_data$attractiveness) &&
+    !is.null(processed_data$decay)
+
+  if (estimate_movement_rate && !has_movement_inputs) {
+    stop(
+      "options$estimate_movement_rate = TRUE requires data$movement with distance_matrix, attractiveness, and decay"
+    )
+  }
+
   # Optional environmental covariates used in biomass transition equation
   env_info <- .prepare_environmental_covariates(
     env_data = data$env_data,
@@ -217,20 +288,21 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   } else {
     # Validate provided starting values
     # Required globals
-    required_params <- c("log_r", "log_K", "log_m", "log_sigma_proc", "log_sigma_obs")
+    required_params <- c("log_r", "log_m", "log_sigma_proc", "log_sigma_obs")
     # Per-area and per-index params when multi-area / multi-index
     if (!is.null(processed_data$areas)) {
       area_suffix <- paste0(".", processed_data$areas)
+      k_names <- paste0("log_K", area_suffix)
       if (!is.null(processed_data$labels)) {
         # q per area and label
         label_suffix <- paste0(".", processed_data$labels)
         q_names <- as.vector(outer(paste0("log_q", area_suffix), label_suffix, paste0))
-        required_params <- c(required_params, q_names, paste0("log_B0", area_suffix))
+        required_params <- c(required_params, k_names, q_names, "log_d0")
       } else {
-        required_params <- c(required_params, paste0("log_q", area_suffix), paste0("log_B0", area_suffix))
+        required_params <- c(required_params, k_names, paste0("log_q", area_suffix), "log_d0")
       }
     } else {
-      required_params <- c(required_params, "log_q", "log_B0")
+      required_params <- c(required_params, "log_K", "log_q", "log_d0")
     }
     if (!all(required_params %in% names(params_init))) {
       stop(
@@ -262,19 +334,23 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   has_labels <- !is.null(processed_data$labels)
 
   # Normalise single-area parameter names:
-  # log_q -> log_q_A1, log_B0 -> log_B0_A1  (objective always uses area suffix)
-  if (n_areas == 1 && !has_labels) {
+  # log_q/log_K -> log_q_<area>/log_K_<area> (objective always uses area suffix when areas are present)
+  if (n_areas == 1) {
     a <- areas[1]
     q_key <- paste0("log_q_", a)
-    b0_key2 <- paste0("log_B0_", a)
     if ("log_q" %in% names(params_init) && !q_key %in% names(params_init)) {
       params_init[[q_key]] <- params_init[["log_q"]]
       params_init[["log_q"]] <- NULL
     }
-    if ("log_B0" %in% names(params_init) && !b0_key2 %in% names(params_init)) {
-      params_init[[b0_key2]] <- params_init[["log_B0"]]
-      params_init[["log_B0"]] <- NULL
+    k_key <- paste0("log_K_", a)
+    if ("log_K" %in% names(params_init) && !k_key %in% names(params_init)) {
+      params_init[[k_key]] <- params_init[["log_K"]]
+      params_init[["log_K"]] <- NULL
     }
+  }
+
+  if (!"log_d0" %in% names(params_init)) {
+    params_init[["log_d0"]] <- log(0.8)
   }
 
   # Add default starting values for optional environmental effects and AR1.
@@ -288,6 +364,13 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   }
   if (use_process_noise && identical(process_error_structure, "ar1") && !"theta_rho" %in% names(params_init)) {
     params_init[["theta_rho"]] <- atanh(0.2)
+  }
+  if (estimate_movement_rate && !"log_movement_rate" %in% names(params_init)) {
+    move_start <- movement_rate_start %||% processed_data$movement_rate %||% 0.12
+    if (!is.numeric(move_start) || length(move_start) != 1 || !is.finite(move_start) || move_start <= 0 || move_start >= 1) {
+      stop("movement_rate_start must be a single finite numeric value in (0, 1)")
+    }
+    params_init[["log_movement_rate"]] <- stats::qlogis(as.numeric(move_start))
   }
 
   # catch as matrix [n_years x n_areas] always
@@ -308,14 +391,21 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     }
   }
 
+  cpue_sd <- processed_data$cpue_sd %||% NULL
+  if (!has_labels && !is.null(cpue_sd) && !is.matrix(cpue_sd)) {
+    cpue_sd <- matrix(cpue_sd, ncol = 1, dimnames = list(NULL, areas))
+  }
+
   rtmb_data <- list(
     n_years = n_years,
     n_areas = n_areas,
     areas = areas,
     catch_mat = catch_mat,
     cpue_obs = cpue_obs,
+    cpue_sd = cpue_sd,
     labels = if (has_labels) processed_data$labels else NULL,
-    process_error_structure = process_error_structure
+    process_error_structure = process_error_structure,
+    spinup_years = spinup_years
   )
 
   if (!is.null(processed_data$env_array)) {
@@ -324,8 +414,10 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   }
 
   # Attach movement data
-  if (!is.null(processed_data$movement_rate)) {
-    rtmb_data$movement_rate <- processed_data$movement_rate
+  if (has_movement_inputs) {
+    if (!is.null(processed_data$movement_rate)) {
+      rtmb_data$movement_rate <- as.numeric(processed_data$movement_rate)
+    }
     rtmb_data$decay <- processed_data$decay
     rtmb_data$distance_matrix <- processed_data$distance_matrix
     rtmb_data$attractiveness <- processed_data$attractiveness
@@ -473,7 +565,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     full_log_par[nm] <- opt_result$par[nm]
   }
   # Keep only scalar parameters (exclude proc_dev, etc.)
-  scalar_par_names <- grep("^(log_r|log_K|log_m|log_sigma|log_q|log_B0)", names(full_log_par), value = TRUE)
+  scalar_par_names <- grep("^(log_r|log_K|log_m|log_sigma|log_q|log_d0)", names(full_log_par), value = TRUE)
   scalar_par_names <- unique(c(
     scalar_par_names,
     grep("^(beta_|theta_rho)$", names(full_log_par), value = TRUE)
@@ -562,6 +654,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     process_noise = use_process_noise,
     process_error_structure = if (use_process_noise) process_error_structure else "none",
     rho = if ("rho" %in% names(fitted_params)) fitted_params[["rho"]] else NA_real_,
+    movement_rate = if ("movement_rate" %in% names(fitted_params)) fitted_params[["movement_rate"]] else (processed_data$movement_rate %||% NA_real_),
     env_effects = {
       env_idx <- grepl("^beta[._]", names(fitted_params))
       if (any(env_idx)) fitted_params[env_idx] else NULL
@@ -592,7 +685,23 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
         areas = processed_data$areas,
         catch = processed_data$catch,
         cpue = processed_data$cpue,
+        cpue_sd = processed_data$cpue_sd %||% NULL,
         effort = effort,
+        spinup_years = spinup_years,
+        movement = if (has_movement_inputs) {
+          list(
+            distance_matrix = processed_data$distance_matrix,
+            attractiveness = processed_data$attractiveness,
+            decay = processed_data$decay,
+            movement_rate = if ("movement_rate" %in% names(fitted_params)) {
+              as.numeric(fitted_params[["movement_rate"]])
+            } else {
+              as.numeric(processed_data$movement_rate %||% NA_real_)
+            }
+          )
+        } else {
+          NULL
+        },
         env_scaling = processed_data$env_scaling %||% NULL
       ),
       results = results_list,
@@ -624,42 +733,66 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
       stop("Prior for '", param_name, "' must be supplied as a list")
     }
 
-    fit_param <- .normalize_prior_parameter_name(param_name, rtmb_parms, areas)
+    fit_params <- .normalize_prior_parameter_name(param_name, rtmb_parms, areas)
     dist <- spec$dist %||% spec$distribution
     if (is.null(dist) || !is.character(dist) || length(dist) != 1) {
       stop("Prior for '", param_name, "' must supply 'dist' or 'distribution'")
     }
     dist <- tolower(dist)
 
-    idx <- idx + 1L
-    if (dist %in% c("normal", "gaussian")) {
-      mean <- spec$mean
-      sd <- spec$sd
-      if (!is.numeric(mean) || length(mean) != 1 || !is.finite(mean)) {
-        stop("Normal prior for '", param_name, "' must supply a finite scalar 'mean'")
+    for (fit_param in fit_params) {
+      idx <- idx + 1L
+      if (dist %in% c("normal", "gaussian")) {
+        mean <- spec$mean
+        sd <- spec$sd
+        if (!is.numeric(mean) || length(mean) != 1 || !is.finite(mean)) {
+          stop("Normal prior for '", param_name, "' must supply a finite scalar 'mean'")
+        }
+        if (!is.numeric(sd) || length(sd) != 1 || !is.finite(sd) || sd <= 0) {
+          stop("Normal prior for '", param_name, "' must supply a positive finite scalar 'sd'")
+        }
+        normalized[[idx]] <- list(param = fit_param, dist = "normal", mean = mean, sd = sd)
+      } else if (dist == "lognormal") {
+        meanlog <- spec$meanlog
+        sdlog <- spec$sdlog
+        if (!grepl("^log_", fit_param)) {
+          stop("Lognormal priors are only supported for log-scale parameters; use a normal prior for '", param_name, "'")
+        }
+        if (!is.numeric(meanlog) || length(meanlog) != 1 || !is.finite(meanlog)) {
+          stop("Lognormal prior for '", param_name, "' must supply a finite scalar 'meanlog'")
+        }
+        if (!is.numeric(sdlog) || length(sdlog) != 1 || !is.finite(sdlog) || sdlog <= 0) {
+          stop("Lognormal prior for '", param_name, "' must supply a positive finite scalar 'sdlog'")
+        }
+        normalized[[idx]] <- list(param = fit_param, dist = "lognormal", meanlog = meanlog, sdlog = sdlog)
+      } else if (dist == "beta") {
+        shape1 <- spec$shape1 %||% spec$alpha
+        shape2 <- spec$shape2 %||% spec$beta
+        if (!grepl("^log_", fit_param)) {
+          stop("Beta priors are only supported for log-scale parameters constrained to (0, 1); use parameter '", param_name, "' on log scale")
+        }
+        if (!is.numeric(shape1) || length(shape1) != 1 || !is.finite(shape1) || shape1 <= 0) {
+          stop("Beta prior for '", param_name, "' must supply a positive finite scalar 'shape1' (or 'alpha')")
+        }
+        if (!is.numeric(shape2) || length(shape2) != 1 || !is.finite(shape2) || shape2 <= 0) {
+          stop("Beta prior for '", param_name, "' must supply a positive finite scalar 'shape2' (or 'beta')")
+        }
+        normalized[[idx]] <- list(param = fit_param, dist = "beta", shape1 = shape1, shape2 = shape2)
+      } else if (dist %in% c("exponential", "exp")) {
+        rate <- spec$rate %||% spec$lambda
+        if (!grepl("^log_", fit_param)) {
+          stop("Exponential priors are only supported for log-scale positive parameters; use parameter '", param_name, "' on log scale")
+        }
+        if (!is.numeric(rate) || length(rate) != 1 || !is.finite(rate) || rate <= 0) {
+          stop("Exponential prior for '", param_name, "' must supply a positive finite scalar 'rate' (or 'lambda')")
+        }
+        normalized[[idx]] <- list(param = fit_param, dist = "exponential", rate = rate)
+      } else {
+        stop(
+          "Unsupported prior distribution '", dist, "' for '", param_name,
+          "'. Supported distributions are 'normal', 'lognormal', 'beta', and 'exponential'"
+        )
       }
-      if (!is.numeric(sd) || length(sd) != 1 || !is.finite(sd) || sd <= 0) {
-        stop("Normal prior for '", param_name, "' must supply a positive finite scalar 'sd'")
-      }
-      normalized[[idx]] <- list(param = fit_param, dist = "normal", mean = mean, sd = sd)
-    } else if (dist == "lognormal") {
-      meanlog <- spec$meanlog
-      sdlog <- spec$sdlog
-      if (!grepl("^log_", fit_param)) {
-        stop("Lognormal priors are only supported for log-scale parameters; use a normal prior for '", param_name, "'")
-      }
-      if (!is.numeric(meanlog) || length(meanlog) != 1 || !is.finite(meanlog)) {
-        stop("Lognormal prior for '", param_name, "' must supply a finite scalar 'meanlog'")
-      }
-      if (!is.numeric(sdlog) || length(sdlog) != 1 || !is.finite(sdlog) || sdlog <= 0) {
-        stop("Lognormal prior for '", param_name, "' must supply a positive finite scalar 'sdlog'")
-      }
-      normalized[[idx]] <- list(param = fit_param, dist = "lognormal", meanlog = meanlog, sdlog = sdlog)
-    } else {
-      stop(
-        "Unsupported prior distribution '", dist, "' for '", param_name,
-        "'. Supported distributions are 'normal' and 'lognormal'"
-      )
     }
   }
 
@@ -668,19 +801,20 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
 .normalize_prior_parameter_name <- function(param_name, rtmb_parms, areas) {
   raw_name <- gsub("\\.", "_", param_name)
-  raw_name <- sub("^log_B_initial$", "log_B0", raw_name)
-  raw_name <- sub("^B_initial$", "B0", raw_name)
-  raw_name <- sub("^log_B_initial_", "log_B0_", raw_name)
-  raw_name <- sub("^B_initial_", "B0_", raw_name)
   candidates <- raw_name
 
   if (!grepl("^log_", raw_name)) {
     candidates <- c(candidates, paste0("log_", raw_name))
   }
 
+  if (raw_name %in% c("K", "log_K") && length(areas) >= 1L) {
+    prefixed <- if (grepl("^log_", raw_name)) raw_name else paste0("log_", raw_name)
+    candidates <- c(candidates, paste0(prefixed, "_", areas))
+  }
+
   if (length(areas) == 1L) {
     area_name <- areas[1]
-    if (raw_name %in% c("q", "B0", "log_q", "log_B0")) {
+    if (raw_name %in% c("q", "d0", "log_q", "log_d0")) {
       prefixed <- if (grepl("^log_", raw_name)) raw_name else paste0("log_", raw_name)
       candidates <- c(candidates, paste0(prefixed, "_", area_name))
     }
@@ -691,7 +825,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     stop("Prior parameter '", param_name, "' does not match any fitted parameter")
   }
 
-  matches[1]
+  matches
 }
 
 .prepare_environmental_covariates <- function(env_data,
@@ -795,7 +929,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 #'
 #' Aligns and merges CPUE and catch data for model fitting.
 #'
-#' @param cpue_data Data frame with year, cpue, optional area column
+#' @param cpue_data Data frame with year, cpue, optional area/label columns, and optional observation-uncertainty inputs such as cv, se, or obs_sd_log
 #' @param catch_data Data frame with year, catch, optional area column
 #'
 #' @return List with aligned data vectors
@@ -818,6 +952,40 @@ preprocess_model_data <- function(cpue_data, catch_data) {
   # If label column present, treat as multiple indices per area
   has_label <- "label" %in% names(cpue_data)
   if (has_label) cpue_data[["label"]] <- as.factor(cpue_data[["label"]])
+
+  derive_cpue_sd_log <- function(df) {
+    n <- nrow(df)
+    out <- rep(NA_real_, n)
+
+    direct_cols <- c("obs_sd_log", "cpue_sd_log", "se_log", "sigma_log")
+    direct_col <- direct_cols[direct_cols %in% names(df)][1]
+    if (!is.na(direct_col)) {
+      out <- as.numeric(df[[direct_col]])
+      return(out)
+    }
+
+    cv_col <- c("cv", "CV")
+    cv_col <- cv_col[cv_col %in% names(df)][1]
+    if (!is.na(cv_col)) {
+      cv <- as.numeric(df[[cv_col]])
+      valid <- is.finite(cv) & cv >= 0
+      out[valid] <- sqrt(log1p(cv[valid]^2))
+      return(out)
+    }
+
+    se_col <- c("se", "SE", "obs_se", "cpue_se")
+    se_col <- se_col[se_col %in% names(df)][1]
+    if (!is.na(se_col)) {
+      se <- as.numeric(df[[se_col]])
+      cpue <- as.numeric(df[["cpue"]])
+      valid <- is.finite(se) & se >= 0 & is.finite(cpue) & cpue > 0
+      out[valid] <- sqrt(log1p((se[valid] / cpue[valid])^2))
+    }
+
+    out
+  }
+
+  cpue_data[["obs_sd_log"]] <- derive_cpue_sd_log(cpue_data)
 
   # Ensure data is sorted
   if (has_label) {
@@ -851,7 +1019,7 @@ preprocess_model_data <- function(cpue_data, catch_data) {
   # Filter to model years and areas
   cpue_rows <- cpue_data[["year"]] %in% all_years & cpue_data[["area"]] %in% common_areas
   if (has_label) cpue_rows <- cpue_rows & cpue_data[["label"]] %in% labels
-  cpue_cols <- c("year", "area", "cpue", if (has_label) "label" else NULL)
+  cpue_cols <- c("year", "area", "cpue", if (has_label) "label" else NULL, "obs_sd_log")
   cpue_subset <- cpue_data[cpue_rows, cpue_cols]
   catch_subset <- catch_data[catch_data[["year"]] %in% all_years & catch_data[["area"]] %in% common_areas, c("year", "area", "catch")]
 
@@ -864,12 +1032,19 @@ preprocess_model_data <- function(cpue_data, catch_data) {
       dim = c(length(all_years), length(common_areas), length(labels)),
       dimnames = list(year = all_years, area = common_areas, label = labels)
     )
+    cpue_sd_arr <- array(NA_real_,
+      dim = c(length(all_years), length(common_areas), length(labels)),
+      dimnames = list(year = all_years, area = common_areas, label = labels)
+    )
     for (i in seq_len(nrow(cpue_subset))) {
       cpue_arr[year_index[i], area_index[i], label_index[i]] <- cpue_subset[["cpue"]][i]
+      cpue_sd_arr[year_index[i], area_index[i], label_index[i]] <- cpue_subset[["obs_sd_log"]][i]
     }
   } else {
     cpue_mat <- matrix(NA_real_, nrow = length(all_years), ncol = length(common_areas), dimnames = list(all_years, common_areas))
+    cpue_sd_mat <- matrix(NA_real_, nrow = length(all_years), ncol = length(common_areas), dimnames = list(all_years, common_areas))
     cpue_mat[cbind(year_index, area_index)] <- cpue_subset[["cpue"]]
+    cpue_sd_mat[cbind(year_index, area_index)] <- cpue_subset[["obs_sd_log"]]
   }
 
   year_index_c <- match(catch_subset[["year"]], all_years)
@@ -898,8 +1073,12 @@ preprocess_model_data <- function(cpue_data, catch_data) {
   if (has_label) {
     out$labels <- labels
     out$cpue <- cpue_arr
+    if (any(is.finite(cpue_sd_arr))) out$cpue_sd <- cpue_sd_arr
   } else {
     out$cpue <- if (ncol(cpue_mat) == 1) as.numeric(cpue_mat[, 1]) else cpue_mat
+    if (any(is.finite(cpue_sd_mat))) {
+      out$cpue_sd <- if (ncol(cpue_sd_mat) == 1) as.numeric(cpue_sd_mat[, 1]) else cpue_sd_mat
+    }
   }
   out
 }
@@ -918,6 +1097,11 @@ transform_parameters_to_natural <- function(log_params) {
   nms <- names(log_params)
 
   if (length(log_params) > 0) {
+    move_idx <- nms == "log_movement_rate"
+    if (any(move_idx)) {
+      natural_params[move_idx] <- stats::plogis(log_params[move_idx])
+      nms[move_idx] <- "movement_rate"
+    }
     log_idx <- grepl("^log_", nms)
     if (any(log_idx)) {
       natural_params[log_idx] <- exp(log_params[log_idx])
@@ -930,35 +1114,6 @@ transform_parameters_to_natural <- function(log_params) {
     }
   }
   names(natural_params) <- nms
-
-  # Backward-compatibility: if only one area and parameters are suffixed, also provide unsuffixed aliases
-  if (!is.null(names(natural_params))) {
-    pnames <- names(natural_params)
-    # detect single-area suffixed q.* and B0.*
-    q_like <- grep("^q\\.[A-Za-z0-9_]+$", pnames, value = TRUE)
-    b0_like <- grep("^B0\\.[A-Za-z0-9_]+$", pnames, value = TRUE)
-    if (length(q_like) == 1 && !("q" %in% pnames)) {
-      natural_params <- c(natural_params, q = unname(natural_params[q_like]))
-    }
-    if (length(b0_like) == 1 && !("B0" %in% pnames)) {
-      natural_params <- c(natural_params, B0 = unname(natural_params[b0_like]))
-    }
-
-    # Clarity alias: expose B_initial alongside B0 without breaking backward compatibility
-    pnames <- names(natural_params)
-    if ("B0" %in% pnames && !("B_initial" %in% pnames)) {
-      natural_params <- c(natural_params, B_initial = unname(natural_params["B0"]))
-    }
-    b0_named <- grep("^B0\\.[A-Za-z0-9_]+$", pnames, value = TRUE)
-    if (length(b0_named) > 0) {
-      for (nm in b0_named) {
-        alias_nm <- sub("^B0\\.", "B_initial.", nm)
-        if (!(alias_nm %in% names(natural_params))) {
-          natural_params <- c(natural_params, setNames(unname(natural_params[nm]), alias_nm))
-        }
-      }
-    }
-  }
 
   return(natural_params)
 }
@@ -975,6 +1130,7 @@ transform_parameters_to_natural <- function(log_params) {
 #' @keywords internal
 calculate_model_results <- function(parameters, data) {
   n_years <- length(data$years)
+  spinup_years <- as.integer(data$spinup_years %||% 0L)
   multi_area <- is.matrix(data$catch) || is.matrix(data$cpue) || !is.null(data$areas)
   areas <- if (!is.null(data$areas)) data$areas else if (is.matrix(data$cpue)) colnames(data$cpue) else "A1"
   n_areas <- if (multi_area) length(areas) else 1L
@@ -983,11 +1139,10 @@ calculate_model_results <- function(parameters, data) {
 
   # Extract global parameters
   r <- parameters[["r"]]
-  K <- parameters[["K"]]
   m <- parameters[["m"]]
 
-  # Build per-area parameters (q and B0)
-  get_param_area <- function(params, base, areas, fallback = NULL) {
+  # Build per-area parameters (q)
+  get_param_area <- function(params, base, areas) {
     out <- numeric(length(areas))
     names(out) <- areas
     pnames <- names(params)
@@ -995,10 +1150,8 @@ calculate_model_results <- function(parameters, data) {
       key <- paste0(base, ".", a)
       if (!is.null(pnames) && key %in% pnames) {
         out[[a]] <- unname(params[key])
-      } else if (!is.null(fallback) && !is.null(pnames) && fallback %in% pnames) {
-        out[[a]] <- unname(params[fallback])
       } else {
-        stop("Missing parameter ", key, " and no fallback provided")
+        stop("Missing required area-specific parameter ", key)
       }
     }
     out
@@ -1006,17 +1159,7 @@ calculate_model_results <- function(parameters, data) {
   if (multi_area) {
     # Per-area q or per-index q
     if (!has_labels) {
-      # Try per-area q first
-      q_vec <- try(get_param_area(parameters, "q", areas, fallback = "q"), silent = TRUE)
-      if (inherits(q_vec, "try-error") || any(is.na(q_vec))) {
-        # fallback to global q
-        if (!is.null(names(parameters)) && "q" %in% names(parameters)) {
-          q_vec <- rep(parameters[["q"]], length(areas))
-          names(q_vec) <- areas
-        } else {
-          stop("Missing catchability q parameters")
-        }
-      }
+      q_vec <- get_param_area(parameters, "q", areas)
     } else {
       # Build per-index q array [area x label]
       pnames <- names(parameters)
@@ -1029,28 +1172,48 @@ calculate_model_results <- function(parameters, data) {
             q_arr[a, l] <- parameters[[key]]
           } else if (!is.null(pnames) && paste0("q.", a) %in% pnames) {
             q_arr[a, l] <- parameters[[paste0("q.", a)]]
-          } else if (!is.null(pnames) && "q" %in% pnames) {
-            q_arr[a, l] <- parameters[["q"]]
           } else {
             stop("Missing catchability parameter for area ", a, ", label ", l)
           }
         }
       }
     }
-    B0_vec <- get_param_area(parameters, "B0", areas, fallback = "B0")
   } else {
     area1 <- areas[[1]]
     q_key <- paste0("q.", area1)
-    b0_key <- paste0("B0.", area1)
     pnames <- names(parameters)
     q_val <- if (!is.null(pnames) && q_key %in% pnames) unname(parameters[q_key]) else unname(parameters["q"])
-    b0_val <- if (!is.null(pnames) && b0_key %in% pnames) unname(parameters[b0_key]) else unname(parameters["B0"])
-    if (is.null(q_val) || is.null(b0_val)) stop("Missing q or B0 parameter for single-area model")
+    if (is.null(q_val)) stop("Missing q parameter for single-area model")
     q_vec <- c(q_val)
     names(q_vec) <- area1
-    B0_vec <- c(b0_val)
-    names(B0_vec) <- area1
   }
+
+  # Initial depletion and area-specific carrying capacities
+  pnames <- names(parameters)
+  if (!is.null(pnames) && "d0" %in% pnames) {
+    d0 <- as.numeric(parameters[["d0"]])
+  } else {
+    stop("Missing d0 parameter")
+  }
+  if (!is.finite(d0) || d0 <= 0) {
+    stop("Parameter d0 must be positive and finite")
+  }
+
+  K_vec <- if (multi_area) {
+    get_param_area(parameters, "K", areas)
+  } else {
+    area1 <- areas[[1]]
+    pnames <- names(parameters)
+    if (!is.null(pnames) && "K" %in% pnames) {
+      out <- c(unname(parameters[["K"]]))
+      names(out) <- area1
+      out
+    } else {
+      stop("Missing K parameter for single-area model")
+    }
+  }
+  B0_vec <- d0 * K_vec
+  names(B0_vec) <- areas
 
   # Initialize outputs
   biomass <- matrix(NA_real_, nrow = n_years, ncol = n_areas, dimnames = list(as.character(data$years), areas))
@@ -1065,8 +1228,60 @@ calculate_model_results <- function(parameters, data) {
     cpue_arr <- data$cpue
   }
 
+  move_rate <- if (!is.null(names(parameters)) && "movement_rate" %in% names(parameters)) {
+    as.numeric(parameters[["movement_rate"]])
+  } else {
+    as.numeric(data$movement_rate %||% NA_real_)
+  }
+  has_movement <- is.finite(move_rate) && move_rate > 0 &&
+    !is.null(data$distance_matrix) && !is.null(data$attractiveness) && !is.null(data$decay)
+  if (has_movement) {
+    decay_val <- data$decay
+    dist_mat <- data$distance_matrix
+    attract <- data$attractiveness
+    if (!is.null(rownames(dist_mat)) && !is.null(colnames(dist_mat))) {
+      if (!all(areas %in% rownames(dist_mat)) || !all(areas %in% colnames(dist_mat))) {
+        stop("movement distance_matrix row/column names must include all model areas")
+      }
+      dist_mat <- dist_mat[areas, areas, drop = FALSE]
+    }
+    if (!is.null(names(attract))) {
+      if (!all(areas %in% names(attract))) {
+        stop("movement attractiveness names must include all model areas")
+      }
+      attract <- as.numeric(attract[areas])
+    } else {
+      attract <- as.numeric(attract)
+    }
+    names(attract) <- areas
+    nA <- n_areas
+    W <- matrix(0, nA, nA)
+    rownames(W) <- areas
+    colnames(W) <- areas
+    for (a in seq_len(nA)) {
+      for (b in seq_len(nA)) {
+        W[a, b] <- attract[b] * exp(-decay_val * dist_mat[a, b])
+      }
+    }
+    Kmat <- W / rowSums(W)
+  }
+
   # Biomass recursion per area
   biomass[1, ] <- as.numeric(B0_vec)
+
+  if (spinup_years > 0) {
+    b_spin <- biomass[1, ]
+    for (s in seq_len(spinup_years)) {
+      production <- ifelse(b_spin > 0 & K_vec > 0 & m > 0, r * b_spin * (1 - (b_spin / K_vec)^(m - 1)) / m, 0)
+      production[!is.finite(production)] <- 0
+      b_next <- pmax(b_spin + production, 0.01)
+      if (has_movement) {
+        b_next <- pmax((1 - move_rate) * b_next + move_rate * as.numeric(Kmat %*% b_next), 0.01)
+      }
+      b_spin <- b_next
+    }
+    biomass[1, ] <- b_spin
+  }
 
   env_term <- matrix(0, nrow = max(n_years - 1, 1), ncol = n_areas)
   if (has_env) {
@@ -1093,7 +1308,7 @@ calculate_model_results <- function(parameters, data) {
 
   for (t in 1:(n_years - 1)) {
     Bt <- biomass[t, ]
-    production <- ifelse(Bt > 0 & K > 0 & m > 0, r * Bt * (1 - (Bt / K)^(m - 1)) / m, 0)
+    production <- ifelse(Bt > 0 & K_vec > 0 & m > 0, r * Bt * (1 - (Bt / K_vec)^(m - 1)) / m, 0)
     production[!is.finite(production)] <- 0
     B_det <- pmax(Bt + production - catch_mat[t, ], 0.01)
     if (has_env) {
@@ -1104,20 +1319,7 @@ calculate_model_results <- function(parameters, data) {
   }
 
   # Apply gravity movement redistribution (if present in data)
-  if (!is.null(data$movement_rate) && data$movement_rate > 0) {
-    move_rate <- data$movement_rate
-    decay_val <- data$decay
-    dist_mat <- data$distance_matrix
-    attract <- data$attractiveness
-    nA <- n_areas
-    # Build movement kernel (same as in objective function)
-    W <- matrix(0, nA, nA)
-    for (a in seq_len(nA)) {
-      for (b in seq_len(nA)) {
-        W[a, b] <- attract[b] * exp(-decay_val * dist_mat[a, b])
-      }
-    }
-    Kmat <- W / rowSums(W)
+  if (has_movement) {
     for (t in 2:n_years) {
       Bt <- biomass[t, ]
       biomass[t, ] <- pmax((1 - move_rate) * Bt + move_rate * as.numeric(Kmat %*% Bt), 0.01)

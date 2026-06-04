@@ -57,27 +57,60 @@ validate_ProductionModel <- function(x) {
 
   # ---- parameters ----
   if ("parameters" %in% names(x) && length(x$parameters) > 0) {
-    core_required <- c("r", "K", "m", "sigma_obs")
-    optional_params <- c("q", "sigma_proc", "sigma_process", "B0")
+    core_required <- c("r", "m", "sigma_obs")
+    optional_params <- c("q", "sigma_proc", "sigma_process", "B0", "movement_rate")
     param_names <- names(x$parameters)
 
     if (is.null(param_names)) {
       errors <- c(errors, "parameters must have names")
     } else {
+      data_areas <- if ("data" %in% names(x) && is.list(x$data) && "areas" %in% names(x$data)) {
+        as.character(x$data$areas)
+      } else {
+        character(0)
+      }
+      catch_multi_area <- "data" %in% names(x) && is.list(x$data) && "catch" %in% names(x$data) && !is.null(dim(x$data$catch)) && length(dim(x$data$catch)) >= 2 && dim(x$data$catch)[2] > 1
+      cpue_multi_area <- "data" %in% names(x) && is.list(x$data) && "cpue" %in% names(x$data) && !is.null(dim(x$data$cpue)) && length(dim(x$data$cpue)) >= 2 && dim(x$data$cpue)[2] > 1
+      is_multi_area <- length(data_areas) > 1 || catch_multi_area || cpue_multi_area
+
       missing_core <- setdiff(core_required, param_names)
       if (length(missing_core) > 0) {
         errors <- c(errors, paste("Missing required parameters:", paste(missing_core, collapse = ", ")))
       }
 
+      is_k_like <- grepl("^K(\\.|$)", param_names)
       is_q_like <- grepl("^q(\\.|$)", param_names)
       is_b0_like <- grepl("^B0(\\.|$)", param_names)
+
+      if (!any(is_k_like)) {
+        errors <- c(errors, "At least one carrying-capacity parameter 'K' or 'K.<area>' must be provided")
+      }
 
       if (!any(is_q_like)) {
         errors <- c(errors, "At least one catchability parameter 'q' or 'q.<area>[.<label>]' must be provided")
       }
 
+      if (is_multi_area) {
+        if ("K" %in% param_names) {
+          errors <- c(errors, "Multi-area models must not include scalar 'K'; use area-specific 'K.<area>' parameters")
+        }
+        if ("q" %in% param_names) {
+          errors <- c(errors, "Multi-area models must not include scalar 'q'; use area-specific 'q.<area>' parameters")
+        }
+        if (length(data_areas) > 0) {
+          missing_area_k <- data_areas[!paste0("K.", data_areas) %in% param_names]
+          if (length(missing_area_k) > 0) {
+            errors <- c(errors, paste("Multi-area models require carrying capacity parameters for every area:", paste(paste0("K.", missing_area_k), collapse = ", ")))
+          }
+          missing_area_q <- data_areas[!vapply(data_areas, function(a) any(grepl(paste0("^q\\.", a, "(\\.|$)"), param_names)), logical(1))]
+          if (length(missing_area_q) > 0) {
+            errors <- c(errors, paste("Multi-area models require area-specific catchability for every area:", paste(paste0("q.", missing_area_q), collapse = ", ")))
+          }
+        }
+      }
+
       allowed_core <- c(core_required, optional_params)
-      extra_params <- param_names[!(param_names %in% allowed_core | is_q_like | is_b0_like)]
+      extra_params <- param_names[!(param_names %in% allowed_core | is_k_like | is_q_like | is_b0_like)]
       if (length(extra_params) > 0) {
         errors <- c(errors, paste("Unknown parameters:", paste(extra_params, collapse = ", ")))
       }
@@ -89,9 +122,11 @@ validate_ProductionModel <- function(x) {
         errors <- c(errors, "Parameter 'r' must be positive and finite")
       }
     }
-    if ("K" %in% names(x$parameters)) {
-      if (!is.finite(x$parameters["K"]) || x$parameters["K"] <= 0) {
-        errors <- c(errors, "Parameter 'K' must be positive and finite")
+    k_names <- grep("^K(\\.|$)", names(x$parameters), value = TRUE)
+    if (length(k_names) > 0) {
+      bad_k <- k_names[!is.finite(x$parameters[k_names]) | x$parameters[k_names] <= 0]
+      if (length(bad_k) > 0) {
+        errors <- c(errors, paste("Carrying-capacity parameter(s) must be positive and finite:", paste(bad_k, collapse = ", ")))
       }
     }
     if ("m" %in% names(x$parameters)) {
@@ -121,6 +156,11 @@ validate_ProductionModel <- function(x) {
     if ("sigma_obs" %in% names(x$parameters)) {
       if (!is.finite(x$parameters["sigma_obs"]) || x$parameters["sigma_obs"] <= 0) {
         errors <- c(errors, "Parameter 'sigma_obs' must be positive and finite")
+      }
+    }
+    if ("movement_rate" %in% names(x$parameters)) {
+      if (!is.finite(x$parameters["movement_rate"]) || x$parameters["movement_rate"] < 0 || x$parameters["movement_rate"] > 1) {
+        errors <- c(errors, "Parameter 'movement_rate' must be finite and within [0, 1]")
       }
     }
 

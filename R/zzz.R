@@ -1,7 +1,7 @@
 # Suppress R CMD check NOTEs for variables created by RTMB::getAll()
 utils::globalVariables(c(
   "log_r", "log_K", "log_m", "log_sigma_obs",
-  "log_sigma_proc", "proc_dev"
+  "log_sigma_proc", "log_movement_rate", "log_d0", "proc_dev"
 ))
 
 .onAttach <- function(libname, pkgname) {

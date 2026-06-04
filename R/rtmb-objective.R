@@ -53,7 +53,6 @@ create_rtmb_objective <- function(data_env) {
 
     # ---- Transform global parameters from log scale ----
     r <- exp(log_r)
-    K <- exp(log_K)
     m <- exp(log_m)
     sigma_obs <- exp(log_sigma_obs)
 
@@ -65,6 +64,16 @@ create_rtmb_objective <- function(data_env) {
       exists("proc_dev", inherits = FALSE)
     if (has_proc) {
       sigma_proc <- exp(log_sigma_proc)
+    }
+
+    has_movement_inputs <- !is.null(data_env$distance_matrix) &&
+      !is.null(data_env$attractiveness) &&
+      !is.null(data_env$decay)
+    has_movement_param <- "log_movement_rate" %in% names(parms)
+    if (has_movement_param) {
+      move_rate <- 1 / (1 + exp(-parms[["log_movement_rate"]]))
+    } else {
+      move_rate <- data_env$movement_rate %||% 0
     }
 
     process_error_structure <- data_env$process_error_structure %||% "iid"
@@ -85,14 +94,20 @@ create_rtmb_objective <- function(data_env) {
       }
     }
 
-    # ---- Extract per-area B0 and q ----
-    # IMPORTANT: In closures passed to MakeADFun, element assignment into
-    # plain numeric() vectors silently loses the advector class.  We must
-    # pre-allocate with RTMB::advector() so the container is AD-aware.
+    # ---- Extract initial depletion and per-area carrying capacity ----
+    d0 <- exp(parms[["log_d0"]])
+    K_vec <- RTMB::advector(numeric(n_areas))
     B0_vec <- RTMB::advector(numeric(n_areas))
     for (ia in seq_len(n_areas)) {
-      key <- paste0("log_B0_", areas[ia])
-      B0_vec[ia] <- exp(parms[[key]])
+      k_key <- paste0("log_K_", areas[ia])
+      if (k_key %in% names(parms)) {
+        K_vec[ia] <- exp(parms[[k_key]])
+      } else if (n_areas == 1L && "log_K" %in% names(parms)) {
+        K_vec[ia] <- exp(parms[["log_K"]])
+      } else {
+        stop("Missing carrying-capacity parameter for area ", areas[ia])
+      }
+      B0_vec[ia] <- d0 * K_vec[ia]
     }
 
     # q – may be per-area or per-area-label
@@ -118,12 +133,86 @@ create_rtmb_objective <- function(data_env) {
     # ---- Retrieve data ----
     catch_mat <- data_env$catch_mat # [n_years x n_areas]
     cpue_obs <- data_env$cpue_obs # matrix or 3-d array
+    cpue_sd <- data_env$cpue_sd
+    spinup_years <- as.integer(data_env$spinup_years %||% 0L)
+
+    if (!has_labels && !is.matrix(cpue_obs)) {
+      cpue_obs <- matrix(cpue_obs, ncol = n_areas, dimnames = list(NULL, areas))
+    }
+    if (!has_labels && !is.null(cpue_sd) && !is.matrix(cpue_sd)) {
+      cpue_sd <- matrix(cpue_sd, ncol = n_areas, dimnames = list(NULL, areas))
+    }
+
+    # Pre-build movement kernel when movement inputs are available.
+    if (has_movement_inputs) {
+      decay_val <- data_env$decay
+      dist_mat <- data_env$distance_matrix
+      attract <- data_env$attractiveness
+      if (!is.null(rownames(dist_mat)) && !is.null(colnames(dist_mat))) {
+        if (!all(areas %in% rownames(dist_mat)) || !all(areas %in% colnames(dist_mat))) {
+          stop("movement distance_matrix row/column names must include all model areas")
+        }
+        dist_mat <- dist_mat[areas, areas, drop = FALSE]
+      }
+      if (!is.null(names(attract))) {
+        if (!all(areas %in% names(attract))) {
+          stop("movement attractiveness names must include all model areas")
+        }
+        attract <- as.numeric(attract[areas])
+      } else {
+        attract <- as.numeric(attract)
+      }
+      names(attract) <- areas
+      nA <- n_areas
+      W <- matrix(0, nA, nA)
+      rownames(W) <- areas
+      colnames(W) <- areas
+      for (a in seq_len(nA)) {
+        for (b in seq_len(nA)) {
+          W[a, b] <- attract[b] * exp(-decay_val * dist_mat[a, b])
+        }
+      }
+      rs <- rowSums(W)
+      Kmat <- W / rs
+    }
 
     # ---- Biomass dynamics ----
     # Use a list-of-vectors to store biomass (avoids matrix ops that strip
     # RTMB AD class attributes).  B[[t]][ia] = biomass in year t, area ia.
     B <- vector("list", n_years)
     B[[1]] <- B0_vec
+
+    # Deterministic pre-data spin-up with zero catch to relax initial
+    # conditions toward equilibrium before fitting observation years.
+    if (spinup_years > 0) {
+      B_spin <- B[[1]]
+      for (s in seq_len(spinup_years)) {
+        B_next <- RTMB::advector(numeric(n_areas))
+        for (ia in seq_len(n_areas)) {
+          Bt_ia <- B_spin[ia]
+          prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / m
+          B_det_ia <- Bt_ia + prod_ia
+          B_det_ia <- 0.5 * (B_det_ia + sqrt(B_det_ia * B_det_ia + 4e-8)) + 1e-8
+          B_next[ia] <- B_det_ia
+        }
+
+        if (has_movement_inputs) {
+          B_move <- RTMB::advector(numeric(n_areas))
+          for (ia in seq_len(n_areas)) {
+            moved <- 0
+            for (ib in seq_len(n_areas)) {
+              moved <- moved + Kmat[ia, ib] * B_next[ib]
+            }
+            B_move[ia] <- (1 - move_rate) * B_next[ia] + move_rate * moved
+            B_move[ia] <- 0.5 * (B_move[ia] + sqrt(B_move[ia] * B_move[ia] + 4e-8)) + 1e-8
+          }
+          B_spin <- B_move
+        } else {
+          B_spin <- B_next
+        }
+      }
+      B[[1]] <- B_spin
+    }
 
     nll <- 0
 
@@ -132,7 +221,7 @@ create_rtmb_objective <- function(data_env) {
       B_next <- RTMB::advector(numeric(n_areas))
       for (ia in seq_len(n_areas)) {
         Bt_ia <- B[[t]][ia]
-        prod_ia <- r * Bt_ia * (1 - (Bt_ia / K)^(m - 1)) / m
+        prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / m
         B_det_ia <- Bt_ia + prod_ia - catch_mat[t, ia]
         # Soft lower bound: RTMB cannot branch on AD types, so use
         # a differentiable approximation to max(x, eps).
@@ -171,28 +260,14 @@ create_rtmb_objective <- function(data_env) {
     }
 
     # Apply gravity movement (if present) --- deterministic redistribution
-    if (!is.null(data_env$movement_rate) && data_env$movement_rate > 0) {
-      move_rate <- data_env$movement_rate
-      decay_val <- data_env$decay
-      dist_mat <- data_env$distance_matrix
-      attract <- data_env$attractiveness
-      nA <- n_areas
-      # Build movement kernel (constant, plain R – no AD)
-      W <- matrix(0, nA, nA)
-      for (a in seq_len(nA)) {
-        for (b in seq_len(nA)) {
-          W[a, b] <- attract[b] * exp(-decay_val * dist_mat[a, b])
-        }
-      }
-      rs <- rowSums(W)
-      Kmat <- W / rs
+    if (has_movement_inputs) {
       # Redistribute biomass for years 2..n_years
       for (t in 2:n_years) {
         Bt_old <- B[[t]]
-        Bt_new <- RTMB::advector(numeric(nA))
-        for (ia in seq_len(nA)) {
+        Bt_new <- RTMB::advector(numeric(n_areas))
+        for (ia in seq_len(n_areas)) {
           moved <- 0
-          for (ib in seq_len(nA)) {
+          for (ib in seq_len(n_areas)) {
             moved <- moved + Kmat[ia, ib] * Bt_old[ib]
           }
           Bt_new[ia] <- (1 - move_rate) * Bt_old[ia] + move_rate * moved
@@ -213,7 +288,9 @@ create_rtmb_objective <- function(data_env) {
             cpue_val <- cpue_obs[t, ia, il]
             if (!is.na(cpue_val) && cpue_val > 0) {
               cpue_pred <- q_arr[ia, il] * B[[t]][ia]
-              nll <- nll - RTMB::dnorm(log(cpue_val), log(cpue_pred), sigma_obs, log = TRUE)
+              obs_sd_ia <- if (!is.null(cpue_sd)) cpue_sd[t, ia, il] else NA_real_
+              total_sd <- if (is.finite(obs_sd_ia) && obs_sd_ia >= 0) sqrt(sigma_obs * sigma_obs + obs_sd_ia * obs_sd_ia) else sigma_obs
+              nll <- nll - RTMB::dnorm(log(cpue_val), log(cpue_pred), total_sd, log = TRUE)
             }
           }
         }
@@ -224,7 +301,9 @@ create_rtmb_objective <- function(data_env) {
           cpue_val <- cpue_obs[t, ia]
           if (!is.na(cpue_val) && cpue_val > 0) {
             cpue_pred <- q_vec[ia] * B[[t]][ia]
-            nll <- nll - RTMB::dnorm(log(cpue_val), log(cpue_pred), sigma_obs, log = TRUE)
+            obs_sd_ia <- if (!is.null(cpue_sd)) cpue_sd[t, ia] else NA_real_
+            total_sd <- if (is.finite(obs_sd_ia) && obs_sd_ia >= 0) sqrt(sigma_obs * sigma_obs + obs_sd_ia * obs_sd_ia) else sigma_obs
+            nll <- nll - RTMB::dnorm(log(cpue_val), log(cpue_pred), total_sd, log = TRUE)
           }
         }
       }
@@ -241,11 +320,12 @@ create_rtmb_objective <- function(data_env) {
     # ---- ADREPORT derived quantities (for sdreport SEs) ----
     RTMB::ADREPORT(B_mat)
     RTMB::ADREPORT(r)
-    RTMB::ADREPORT(K)
+    RTMB::ADREPORT(K_vec)
     RTMB::ADREPORT(m)
     RTMB::ADREPORT(sigma_obs)
     if (has_proc) RTMB::ADREPORT(sigma_proc)
     if (use_ar1) RTMB::ADREPORT(rho)
+    if (has_movement_param) RTMB::ADREPORT(move_rate)
     if (has_env) RTMB::ADREPORT(beta_cov)
 
     # Harvest rate (advector for ADREPORT)
@@ -295,6 +375,20 @@ create_rtmb_objective <- function(data_env) {
       nll <- nll - RTMB::dnorm(param_value, mean = prior$mean, sd = prior$sd, log = TRUE)
     } else if (prior$dist == "lognormal") {
       nll <- nll - RTMB::dnorm(param_value, mean = prior$meanlog, sd = prior$sdlog, log = TRUE)
+    } else if (prior$dist == "beta") {
+      # Parameter is modelled on log scale, so apply beta prior on natural
+      # scale x in (0, 1) using a logistic transform with tiny boundary offset.
+      s <- 1 / (1 + exp(-param_value))
+      eps <- 1e-12
+      x <- eps + (1 - 2 * eps) * s
+      jac <- (1 - 2 * eps) * s * (1 - s)
+      nll <- nll - RTMB::dbeta(x, shape1 = prior$shape1, shape2 = prior$shape2, log = TRUE)
+      nll <- nll - log(jac)
+    } else if (prior$dist == "exponential") {
+      # Parameter is modelled on log scale; apply Exponential(rate) prior on
+      # natural scale x = exp(theta) with Jacobian |dx/dtheta| = x.
+      x <- exp(param_value)
+      nll <- nll - (log(prior$rate) - prior$rate * x + log(x))
     }
   }
 
@@ -321,7 +415,7 @@ create_simple_objective <- function(data, initial_params) {
   # Safe check: does a named key exist in par?
   has_key <- function(par, key) key %in% names(par)
 
-  # Helper to extract per-area/label parameters (supports single-area fallback)
+  # Helper to extract per-area/label parameters.
   get_q_param <- function(par, areas, labels = NULL) {
     if (is.null(labels)) {
       vals <- numeric(length(areas))
@@ -330,18 +424,10 @@ create_simple_objective <- function(data, initial_params) {
         key <- paste0("log_q.", a)
         if (has_key(par, key)) {
           vals[[a]] <- exp(par[[key]])
-        } else if (has_key(par, "log_q")) {
+        } else if (length(areas) == 1L && has_key(par, "log_q")) {
           vals[[a]] <- exp(par[["log_q"]])
         } else {
-          # fallback: try any log_q.*
-          q_keys <- grep("^log_q", names(par), value = TRUE)
-          if (length(q_keys) > 0) {
-            vals[[a]] <- exp(par[[q_keys[1]]])
-          } else {
-            # Instead of error, set to default (1) and warn
-            warning(paste("Missing parameter:", key, "- using default q=1"))
-            vals[[a]] <- 1
-          }
+          stop("Missing parameter: ", key)
         }
       }
       return(vals)
@@ -355,52 +441,20 @@ create_simple_objective <- function(data, initial_params) {
             vals[a, l] <- exp(par[[key]])
           } else if (has_key(par, area_key)) {
             vals[a, l] <- exp(par[[area_key]])
-          } else if (has_key(par, "log_q")) {
-            vals[a, l] <- exp(par[["log_q"]])
           } else {
-            # fallback: try any log_q.*
-            q_keys <- grep("^log_q", names(par), value = TRUE)
-            if (length(q_keys) > 0) {
-              vals[a, l] <- exp(par[[q_keys[1]]])
-            } else {
-              warning(paste("Missing parameter:", key, "- using default q=1"))
-              vals[a, l] <- 1
-            }
+            stop("Missing parameter: ", key)
           }
         }
       }
       return(vals)
     }
   }
-  get_B0_param <- function(par, areas) {
-    vals <- numeric(length(areas))
-    names(vals) <- areas
-    for (a in areas) {
-      key <- paste0("log_B0.", a)
-      if (has_key(par, key)) {
-        vals[[a]] <- exp(par[[key]])
-      } else if (has_key(par, "log_B0")) {
-        vals[[a]] <- exp(par[["log_B0"]])
-      } else {
-        # fallback: try any B0
-        b0_keys <- grep("^log_B0", names(par), value = TRUE)
-        if (length(b0_keys) > 0) {
-          vals[[a]] <- exp(par[[b0_keys[1]]])
-        } else {
-          stop("Missing parameter: ", key, " and no default provided")
-        }
-      }
-    }
-    vals
-  }
-
   # Return objective function
   function(par) {
     if (is.null(names(par))) names(par) <- param_names
 
     # Transform global parameters from log scale
     r <- exp(par[["log_r"]])
-    K <- exp(par[["log_K"]])
     m <- exp(par[["log_m"]])
     sigma_obs <- exp(par[["log_sigma_obs"]])
 
@@ -412,7 +466,27 @@ create_simple_objective <- function(data, initial_params) {
 
     # Extract per-area/label parameters
     q_param <- get_q_param(par, areas, labels)
-    B0_vec <- get_B0_param(par, areas)
+    if (!has_key(par, "log_d0")) {
+      stop("Missing parameter: log_d0")
+    }
+    d0 <- exp(par[["log_d0"]])
+    get_k_param <- function(par, areas) {
+      vals <- numeric(length(areas))
+      names(vals) <- areas
+      for (a in areas) {
+        key <- paste0("log_K.", a)
+        if (has_key(par, key)) {
+          vals[[a]] <- exp(par[[key]])
+        } else if (length(areas) == 1L && has_key(par, "log_K")) {
+          vals[[a]] <- exp(par[["log_K"]])
+        } else {
+          stop("Missing parameter: ", key)
+        }
+      }
+      vals
+    }
+    K_vec_s <- get_k_param(par, areas)
+    B0_vec <- d0 * K_vec_s
 
     # Initialize biomass trajectory matrix [year x area]
     B <- matrix(NA_real_,
@@ -420,6 +494,9 @@ create_simple_objective <- function(data, initial_params) {
       dimnames = list(as.character(data$years), areas)
     )
     B[1, ] <- as.numeric(B0_vec)
+
+    # Per-area carrying capacity
+    names(K_vec_s) <- areas
 
     # Initialize negative log-likelihood
     nll <- 0
@@ -430,8 +507,8 @@ create_simple_objective <- function(data, initial_params) {
     # Calculate biomass dynamics per area, with optional gravity movement
     for (t in 1:(n_years - 1)) {
       Bt <- B[t, ]
-      production <- ifelse(Bt > 0 & K > 0 & m > 0,
-        r * Bt * (1 - (Bt / K)^(m - 1)) / m,
+      production <- ifelse(Bt > 0 & K_vec_s > 0 & m > 0,
+        r * Bt * (1 - (Bt / K_vec_s)^(m - 1)) / m,
         0
       )
       # Guard against NaN/Inf from extreme parameter combinations
@@ -460,6 +537,11 @@ create_simple_objective <- function(data, initial_params) {
       B[t + 1, ] <- pmax(B_next, 0.01)
     }
 
+    cpue_sd_data <- data$cpue_sd %||% NULL
+    if (!has_label && !is.null(cpue_sd_data) && !is.matrix(cpue_sd_data)) {
+      cpue_sd_data <- matrix(cpue_sd_data, ncol = 1, dimnames = list(NULL, areas))
+    }
+
     # Calculate observation likelihood (CPUE) per area/label
     if (has_label) {
       cpue_arr <- data$cpue
@@ -472,10 +554,12 @@ create_simple_objective <- function(data, initial_params) {
             cpue_pred <- q_val * Bt[a]
             valid <- !is.na(cpue_obs) && cpue_obs > 0 && Bt[a] > 0 && cpue_pred > 0
             if (valid) {
+              obs_sd <- if (!is.null(cpue_sd_data)) cpue_sd_data[t, a, l] else NA_real_
+              total_sd <- if (is.finite(obs_sd) && obs_sd >= 0) sqrt(sigma_obs^2 + obs_sd^2) else sigma_obs
               log_obs <- log(cpue_obs)
               log_pred <- log(cpue_pred)
               res2 <- (log_obs - log_pred)^2
-              nll <- nll + 0.5 * log(2 * pi * sigma_obs^2) + 0.5 * res2 / sigma_obs^2
+              nll <- nll + 0.5 * log(2 * pi * total_sd^2) + 0.5 * res2 / total_sd^2
             }
           }
         }
@@ -488,10 +572,12 @@ create_simple_objective <- function(data, initial_params) {
         cpue_pred <- as.numeric(q_param) * Bt
         valid <- !is.na(cpue_obs) & cpue_obs > 0 & Bt > 0 & cpue_pred > 0
         if (any(valid)) {
+          obs_sd <- if (!is.null(cpue_sd_data)) cpue_sd_data[t, ] else rep(NA_real_, length(cpue_obs))
+          total_sd <- ifelse(is.finite(obs_sd[valid]) & obs_sd[valid] >= 0, sqrt(sigma_obs^2 + obs_sd[valid]^2), sigma_obs)
           log_obs <- log(cpue_obs[valid])
           log_pred <- log(cpue_pred[valid])
           res2 <- (log_obs - log_pred)^2
-          nll <- nll + sum(0.5 * log(2 * pi * sigma_obs^2) + 0.5 * res2 / sigma_obs^2)
+          nll <- nll + sum(0.5 * log(2 * pi * total_sd^2) + 0.5 * res2 / total_sd^2)
         }
       }
     }
@@ -510,8 +596,7 @@ create_simple_objective <- function(data, initial_params) {
     # Per-area/label bounds (NA-safe)
     bad_q <- !is.finite(q_param) | q_param <= 0 | q_param > 1
     if (any(bad_q)) nll <- nll + 1000 * sum(bad_q)
-    bad_B0 <- !is.finite(B0_vec) | B0_vec <= 0 | B0_vec > K * 2
-    if (any(bad_B0)) nll <- nll + 500 * sum(bad_B0)
+    if (!is.finite(d0) || d0 <= 0 || d0 > 2) nll <- nll + 500
 
     # Final guard: if nll became NaN/Inf return large penalty
     if (!is.finite(nll)) nll <- 1e8
@@ -537,7 +622,7 @@ create_simple_objective <- function(data, initial_params) {
 #' - q: Estimated from CPUE and biomass proxy relationship
 #' - sigma_proc: Default moderate process error
 #' - sigma_obs: Estimated from CPUE variability
-#' - B0: Estimated from initial CPUE and catchability proxy
+#' - d0: Initial depletion multiplier (B0 = d0 x K)
 #'
 #' @keywords internal
 generate_starting_values <- function(data) {
@@ -574,13 +659,15 @@ generate_starting_values <- function(data) {
   r_est <- if (!is.finite(slope)) 0.2 else abs(slope) * 4
   r_est <- max(0.05, min(r_est, 1.0)) # Constrain to reasonable range
 
-  # Estimate carrying capacity using MSY heuristic (Schaefer: MSY = rK/4)
-  # max_catch is a lower bound on MSY, so K >= 4*max_catch/r
-  max_catch <- max(catch_mat, na.rm = TRUE)
-  avg_catch <- mean(catch_mat, na.rm = TRUE)
-  K_from_r <- 4 * max_catch / r_est
-  K_from_catch <- avg_catch * 30 # broader multiplier for slow-growing species
-  K_est <- max(100, sqrt(K_from_r * K_from_catch)) # geometric mean
+  estimate_k_from_catch <- function(catch_vec, r_est) {
+    max_catch <- max(catch_vec, na.rm = TRUE)
+    avg_catch <- mean(catch_vec, na.rm = TRUE)
+    K_from_r <- 4 * max_catch / r_est
+    K_from_catch <- avg_catch * 30
+    max(100, sqrt(K_from_r * K_from_catch))
+  }
+
+  K_est <- estimate_k_from_catch(as.numeric(catch_mat), r_est)
 
   # Shape parameter (default to Schaefer)
   m_est <- 2.0
@@ -588,20 +675,29 @@ generate_starting_values <- function(data) {
   # Process error - moderate default
   sigma_proc_est <- 0.2
 
-  # Observation error from CPUE variability (use all cpue entries)
-  sigma_obs_est <- sd(log(as.numeric(cpue_mat)), na.rm = TRUE)
-  sigma_obs_est <- max(0.1, min(ifelse(is.na(sigma_obs_est), 0.3, sigma_obs_est), 1.0))
+  # Observation error from CPUE variability after removing known per-index SD where available.
+  cpue_sd_mat <- data$cpue_sd %||% NULL
+  if (!is.null(cpue_sd_mat) && has_label) {
+    cpue_sd_mat <- apply(cpue_sd_mat, c(1, 2), function(x) mean(x, na.rm = TRUE))
+  } else if (!is.null(cpue_sd_mat) && !is.matrix(cpue_sd_mat)) {
+    cpue_sd_mat <- matrix(cpue_sd_mat, ncol = 1)
+  }
+  total_cpue_sd <- sd(log(as.numeric(cpue_mat)), na.rm = TRUE)
+  known_sd2 <- if (!is.null(cpue_sd_mat)) mean(as.numeric(cpue_sd_mat)^2, na.rm = TRUE) else NA_real_
+  sigma_obs_est <- if (is.finite(known_sd2)) sqrt(max(total_cpue_sd^2 - known_sd2, 0.01^2)) else total_cpue_sd
+  sigma_obs_est <- max(0.01, min(ifelse(is.na(sigma_obs_est), 0.3, sigma_obs_est), 1.0))
 
-  # Per-area catchability and initial biomass
+  # Per-area catchability and initial depletion
   starting_values <- list(
     log_r = log(r_est),
-    log_K = log(K_est),
     log_m = log(m_est),
     log_sigma_proc = log(sigma_proc_est),
-    log_sigma_obs = log(sigma_obs_est)
+    log_sigma_obs = log(sigma_obs_est),
+    log_d0 = log(0.8)
   )
 
   if (n_areas == 1 && !has_label) {
+    starting_values[["log_K"]] <- log(K_est)
     cpue_a <- cpue_mat[, 1]
     mean_cpue_a <- mean(cpue_a, na.rm = TRUE)
     q_est_a <- mean_cpue_a / (K_est / 2)
@@ -609,40 +705,32 @@ generate_starting_values <- function(data) {
     first_non_na <- which(!is.na(cpue_a))[1]
     cpue0 <- if (!is.na(first_non_na)) cpue_a[first_non_na] else mean_cpue_a
     if (is.na(cpue0) || !is.finite(cpue0)) cpue0 <- max(mean_cpue_a, 1e-6)
-    B0_est_a <- pmax(K_est * 0.1, pmin(cpue0 / q_est_a, K_est * 1.2))
     starting_values[["log_q"]] <- log(q_est_a)
-    starting_values[["log_B0"]] <- log(B0_est_a)
   } else if (!has_label) {
     for (j in seq_along(areas)) {
       a <- areas[[j]]
+      K_est_a <- estimate_k_from_catch(catch_mat[, j], r_est)
       cpue_a <- cpue_mat[, j]
       mean_cpue_a <- mean(cpue_a, na.rm = TRUE)
-      q_est_a <- mean_cpue_a / (K_est / 2)
+      q_est_a <- mean_cpue_a / (K_est_a / 2)
       q_est_a <- max(1e-8, min(ifelse(is.na(q_est_a) || !is.finite(q_est_a), 1e-3, q_est_a), 1.0))
       first_non_na <- which(!is.na(cpue_a))[1]
       cpue0 <- if (!is.na(first_non_na)) cpue_a[first_non_na] else mean_cpue_a
       if (is.na(cpue0) || !is.finite(cpue0)) cpue0 <- max(mean_cpue_a, 1e-6)
-      B0_est_a <- pmax(K_est * 0.1, pmin(cpue0 / q_est_a, K_est * 1.2))
+      starting_values[[paste0("log_K.", a)]] <- log(K_est_a)
       starting_values[[paste0("log_q.", a)]] <- log(q_est_a)
-      starting_values[[paste0("log_B0.", a)]] <- log(B0_est_a)
     }
   } else {
-    # per area and label q, and per area B0
+    # per area and label q
     labels <- data$labels
-    # B0 by area using mean across labels
     for (j in seq_along(areas)) {
       a <- areas[[j]]
-      cpue_a_all <- as.numeric(data$cpue[, j, ])
-      mean_cpue_a <- mean(cpue_a_all, na.rm = TRUE)
-      # derive a generic B0 for area a
-      q_tmp <- max(1e-6, min(mean_cpue_a / (K_est / 2), 1.0))
-      cpue0 <- mean_cpue_a
-      B0_est_a <- pmax(K_est * 0.1, pmin(cpue0 / q_tmp, K_est * 1.2))
-      starting_values[[paste0("log_B0.", a)]] <- log(B0_est_a)
+      K_est_a <- estimate_k_from_catch(catch_mat[, j], r_est)
+      starting_values[[paste0("log_K.", a)]] <- log(K_est_a)
       # now per-label q
       for (l in seq_along(labels)) {
         mean_cpue_al <- mean(data$cpue[, j, l], na.rm = TRUE)
-        q_est_al <- mean_cpue_al / (K_est / 2)
+        q_est_al <- mean_cpue_al / (K_est_a / 2)
         q_est_al <- max(1e-8, min(ifelse(is.na(q_est_al) || !is.finite(q_est_al), 1e-3, q_est_al), 1.0))
         starting_values[[paste0("log_q.", a, ".", labels[[l]])]] <- log(q_est_al)
       }

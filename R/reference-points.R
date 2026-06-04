@@ -159,9 +159,12 @@ calculate_reference_points <- function(model_fit, biomass_target = NULL, baselin
   # Extract fitted parameters
   parameters <- model_fit$parameters
 
-  required_params <- c("r", "K", "m")
+  required_params <- c("r", "m")
   if (!all(required_params %in% names(parameters))) {
     stop("Missing required parameters: ", paste(setdiff(required_params, names(parameters)), collapse = ", "))
+  }
+  if (!any(grepl("^K(\\.|$)", names(parameters)))) {
+    stop("Missing required parameters: K")
   }
 
   ref_core <- calculate_reference_points_from_parameters(
@@ -235,16 +238,23 @@ calculate_reference_points_from_parameters <- function(parameters,
                                                        biomass_target = NULL,
                                                        baseline = c("auto", "B0", "K"),
                                                        warn_on_invalid_m = TRUE) {
-  required_params <- c("r", "K", "m")
+  required_params <- c("r", "m")
   if (!all(required_params %in% names(parameters))) {
     stop("Missing required parameters: ", paste(setdiff(required_params, names(parameters)), collapse = ", "))
+  }
+  if (!any(grepl("^K(\\.|$)", names(parameters)))) {
+    stop("Missing required parameters: K")
   }
 
   baseline <- match.arg(baseline)
   validate_biomass_target(biomass_target)
 
   r <- parameters[["r"]]
-  K <- parameters[["K"]]
+  K <- if ("K" %in% names(parameters)) {
+    parameters[["K"]]
+  } else {
+    sum(unname(parameters[grep("^K\\.", names(parameters), value = TRUE)]))
+  }
   m <- parameters[["m"]]
 
   if (any(c(r, K, m) <= 0)) {

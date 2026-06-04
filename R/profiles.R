@@ -521,6 +521,10 @@ profile_likelihood <- function(model_fit,
   # e.g. "r" -> "log_r", "K" -> "log_K", "sigma_obs" -> "log_sigma_obs"
   # Per-area: "q.A1" -> "log_q_A1", "B0.A1" -> "log_B0_A1"
 
+  if (!is.null(areas) && length(areas) > 1L && pname %in% c("K", "q", "B0")) {
+    return(NULL)
+  }
+
   # Try straightforward conversion
   log_name <- paste0("log_", gsub("\\.", "_", pname))
   if (log_name %in% par_names) return(log_name)
@@ -530,10 +534,6 @@ profile_likelihood <- function(model_fit,
     log_name_suffixed <- paste0("log_", gsub("\\.", "_", pname), "_", areas[1])
     if (log_name_suffixed %in% par_names) return(log_name_suffixed)
   }
-
-  # Fuzzy match: try partial match
-  candidates <- grep(paste0("^log_", gsub("\\.", "_", pname)), par_names, value = TRUE)
-  if (length(candidates) == 1) return(candidates)
 
   NULL
 }
