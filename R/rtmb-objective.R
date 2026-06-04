@@ -97,7 +97,7 @@ create_rtmb_objective <- function(data_env) {
     # ---- Extract initial depletion and per-area carrying capacity ----
     d0 <- exp(parms[["log_d0"]])
     K_vec <- RTMB::advector(numeric(n_areas))
-    B0_vec <- RTMB::advector(numeric(n_areas))
+    B_initial_vec <- RTMB::advector(numeric(n_areas))
     for (ia in seq_len(n_areas)) {
       k_key <- paste0("log_K_", areas[ia])
       if (k_key %in% names(parms)) {
@@ -107,7 +107,7 @@ create_rtmb_objective <- function(data_env) {
       } else {
         stop("Missing carrying-capacity parameter for area ", areas[ia])
       }
-      B0_vec[ia] <- d0 * K_vec[ia]
+      B_initial_vec[ia] <- d0 * K_vec[ia]
     }
 
     # q – may be per-area or per-area-label
@@ -180,7 +180,7 @@ create_rtmb_objective <- function(data_env) {
     # Use a list-of-vectors to store biomass (avoids matrix ops that strip
     # RTMB AD class attributes).  B[[t]][ia] = biomass in year t, area ia.
     B <- vector("list", n_years)
-    B[[1]] <- B0_vec
+    B[[1]] <- B_initial_vec
 
     # Deterministic pre-data spin-up with zero catch to relax initial
     # conditions toward equilibrium before fitting observation years.
@@ -486,14 +486,14 @@ create_simple_objective <- function(data, initial_params) {
       vals
     }
     K_vec_s <- get_k_param(par, areas)
-    B0_vec <- d0 * K_vec_s
+    B_initial_vec <- d0 * K_vec_s
 
     # Initialize biomass trajectory matrix [year x area]
     B <- matrix(NA_real_,
       nrow = n_years, ncol = n_areas,
       dimnames = list(as.character(data$years), areas)
     )
-    B[1, ] <- as.numeric(B0_vec)
+    B[1, ] <- as.numeric(B_initial_vec)
 
     # Per-area carrying capacity
     names(K_vec_s) <- areas

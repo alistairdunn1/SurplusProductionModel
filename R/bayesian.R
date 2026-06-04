@@ -43,7 +43,7 @@ utils::globalVariables(c("chain", "iteration", "param", "sample_value",
 #'   used to add depletion-based posterior summaries such as
 #'   `"B_40%K"` or `"F_40%B0"`.
 #' @param baseline Character string indicating which biomass baseline to use
-#'   for `biomass_target`: `"auto"` (default), `"B0"`, or `"K"`.
+#'   for `biomass_target`: `"auto"` (default), `"B_initial"`, or `"K"`.
 #' @param ...     Additional arguments passed to
 #'   \code{\link[rstan]{sampling}} (e.g. \code{control},
 #'   \code{adapt_delta}).
@@ -112,7 +112,7 @@ bayesian_fit <- function(model_fit,
                          upper  = numeric(0),
                          laplace = FALSE,
                          biomass_target = NULL,
-                         baseline = c("auto", "B0", "K"),
+                         baseline = c("auto", "B_initial", "K"),
                          ...) {
   defaults <- resolve_reference_point_defaults(
     biomass_target = biomass_target,
@@ -259,8 +259,8 @@ bayesian_fit <- function(model_fit,
 #' @keywords internal
 .log_to_natural_names <- function(par_names) {
   nat <- sub("^log_", "", par_names)
-  # Convert underscore area/label suffixes to dots: q_A1 -> q.A1
-  nat <- sub("^(q|B0|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat)
+  # Convert underscore area/label suffixes to dots: q_A1 -> q.A1, B_initial_A1 -> B_initial.A1
+  nat <- sub("^(q|B_initial|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat)
   nat
 }
 
@@ -288,26 +288,26 @@ bayesian_fit <- function(model_fit,
 #' @keywords internal
 .bayesian_target_reference_points <- function(nat_mat, biomass_target, baseline) {
   nat_names <- colnames(nat_mat)
-  b0_cols <- grep("^B0(\\.|$)", nat_names)
+  b_initial_cols <- grep("^B_initial(\\.|$)", nat_names)
 
   baseline_name <- baseline
   if (baseline_name == "auto") {
-    baseline_name <- if (length(b0_cols) > 0) "B0" else "K"
+    baseline_name <- if (length(b_initial_cols) > 0) "B_initial" else "K"
   }
 
-  if (baseline_name == "B0" && length(b0_cols) == 0) {
-    stop("baseline = 'B0' requested but no fitted B0 parameter was found")
+  if (baseline_name == "B_initial" && length(b_initial_cols) == 0) {
+    stop("baseline = 'B_initial' requested but no fitted B_initial parameter was found")
   }
 
   K_draws <- nat_mat[, "K"]
   r_draws <- nat_mat[, "r"]
   m_draws <- nat_mat[, "m"]
 
-  if (baseline_name == "B0") {
-    if ("B0" %in% nat_names) {
-      baseline_draws <- nat_mat[, "B0"]
+  if (baseline_name == "B_initial") {
+    if ("B_initial" %in% nat_names) {
+      baseline_draws <- nat_mat[, "B_initial"]
     } else {
-      baseline_draws <- rowSums(nat_mat[, b0_cols, drop = FALSE])
+      baseline_draws <- rowSums(nat_mat[, b_initial_cols, drop = FALSE])
     }
   } else {
     baseline_draws <- K_draws
@@ -597,15 +597,15 @@ plot.bayes_fit <- function(x, type = c("trace", "density", "pairs", "histogram")
         }
         target_fraction <- x$reference_point_targets$fraction[row_idx]
         target_baseline <- x$reference_point_targets$baseline[row_idx]
-        b0_stan_idx <- grep("^log_B0", par_names_stan)
+        b_initial_stan_idx <- grep("^log_B_initial", par_names_stan)
 
         for (ch in seq_len(dim(arr)[2])) {
           r_v <- exp(arr[, ch, r_idx])
           K_v <- exp(arr[, ch, K_idx])
           m_v <- exp(arr[, ch, m_idx])
-          if (target_baseline == "B0") {
-            if (length(b0_stan_idx) == 0) next
-            baseline_v <- rowSums(exp(arr[, ch, b0_stan_idx, drop = FALSE]))
+          if (target_baseline == "B_initial") {
+            if (length(b_initial_stan_idx) == 0) next
+            baseline_v <- rowSums(exp(arr[, ch, b_initial_stan_idx, drop = FALSE]))
           } else {
             baseline_v <- K_v
           }

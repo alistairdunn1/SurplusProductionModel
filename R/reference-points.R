@@ -18,12 +18,12 @@ NULL
 #'   to use when a function call omits \code{biomass_target}. Pass
 #'   \code{NULL} explicitly to clear the default.
 #' @param baseline Optional default biomass baseline, one of
-#'   \code{"auto"}, \code{"B0"}, or \code{"K"}.
+#'   \code{"auto"}, \code{"B_initial"}, or \code{"K"}.
 #'
 #' @return Invisibly returns the updated defaults as a named list.
 #' @export
 set_reference_point_defaults <- function(biomass_target = NULL,
-                                         baseline = c("auto", "B0", "K")) {
+                                         baseline = c("auto", "B_initial", "K")) {
   if (!missing(biomass_target)) {
     validate_biomass_target(biomass_target)
     do.call(options, stats::setNames(
@@ -66,9 +66,9 @@ get_reference_point_defaults <- function() {
 #'   points. If omitted, uses package default from
 #'   \code{get_reference_point_defaults()}.
 #' @param baseline Character string indicating which biomass baseline to use
-#'   for `biomass_target`: `"auto"` (default), `"B0"`, or `"K"`. In
-#'   `"auto"` mode, the function uses fitted `B0` if available and otherwise
-#'   falls back to `K`. If omitted, uses package default from
+#'   for `biomass_target`: `"auto"` (default), `"B_initial"`, or `"K"`. In
+#'   `"auto"` mode, the function uses fitted `B_initial` if available and
+#'   otherwise falls back to `K`. If omitted, uses package default from
 #'   \code{get_reference_point_defaults()}.
 #'
 #' @return Named list containing reference points:
@@ -97,7 +97,7 @@ get_reference_point_defaults <- function() {
 #'
 #' F_x = r / m * (1 - (B_x / K)^(m - 1))
 #'
-#' where `B_base` is either fitted `B0` or `K`, depending on `baseline`.
+#' where `B_base` is either fitted `B_initial` or `K`, depending on `baseline`.
 #'
 #' For special cases:
 #' - Schaefer model (m=2): MSY = r*K/4, BMSY = K/2
@@ -122,18 +122,18 @@ get_reference_point_defaults <- function() {
 #' msy <- ref_points$msy
 #' bmsy <- ref_points$bmsy
 #'
-#' # Calculate B_40%B0 and F_40%B0 style targets
+#' # Calculate B_40%B_initial and F_40%B_initial style targets
 #' target_ref_points <- calculate_reference_points(
 #'   fitted_model,
 #'   biomass_target = 0.4,
-#'   baseline = "B0"
+#'   baseline = "B_initial"
 #' )
 #' }
 #'
 #' @seealso \code{\link{fit_pella_tomlinson_model}} for model fitting
 #'
 #' @export
-calculate_reference_points <- function(model_fit, biomass_target = NULL, baseline = c("auto", "B0", "K")) {
+calculate_reference_points <- function(model_fit, biomass_target = NULL, baseline = c("auto", "B_initial", "K")) {
   defaults <- resolve_reference_point_defaults(
     biomass_target = biomass_target,
     baseline = baseline,
@@ -236,7 +236,7 @@ calculate_reference_points <- function(model_fit, biomass_target = NULL, baselin
 
 calculate_reference_points_from_parameters <- function(parameters,
                                                        biomass_target = NULL,
-                                                       baseline = c("auto", "B0", "K"),
+                                                       baseline = c("auto", "B_initial", "K"),
                                                        warn_on_invalid_m = TRUE) {
   required_params <- c("r", "m")
   if (!all(required_params %in% names(parameters))) {
@@ -377,22 +377,22 @@ print.pt_reference_points <- function(x, ...) {
 
 resolve_reference_point_baseline <- function(parameters, baseline) {
   param_names <- names(parameters)
-  b0_idx <- grepl("^B0(\\.|$)", param_names)
-  has_b0 <- any(b0_idx)
+  b_initial_idx <- grepl("^B_initial(\\.|$)", param_names)
+  has_b_initial <- any(b_initial_idx)
 
   if (baseline == "auto") {
-    baseline <- if (has_b0) "B0" else "K"
+    baseline <- if (has_b_initial) "B_initial" else "K"
   }
 
-  if (baseline == "B0") {
-    if (!has_b0) {
-      stop("baseline = 'B0' requested but no fitted B0 parameter was found")
+  if (baseline == "B_initial") {
+    if (!has_b_initial) {
+      stop("baseline = 'B_initial' requested but no fitted B_initial parameter was found")
     }
 
-    if ("B0" %in% param_names) {
-      baseline_biomass <- unname(parameters[["B0"]])
+    if ("B_initial" %in% param_names) {
+      baseline_biomass <- unname(parameters[["B_initial"]])
     } else {
-      baseline_biomass <- sum(unname(parameters[b0_idx]))
+      baseline_biomass <- sum(unname(parameters[b_initial_idx]))
     }
   } else {
     baseline_biomass <- unname(parameters[["K"]])
@@ -477,7 +477,7 @@ resolve_reference_point_defaults <- function(biomass_target,
   }
 
   validate_biomass_target(biomass_target)
-  baseline <- match.arg(baseline, c("auto", "B0", "K"))
+  baseline <- match.arg(baseline, c("auto", "B_initial", "K"))
 
   list(
     biomass_target = biomass_target,

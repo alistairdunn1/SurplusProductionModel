@@ -31,7 +31,7 @@ NULL
 #'   used to add depletion-based derived quantities such as `"B_40%K"`
 #'   or `"F_40%B0"`.
 #' @param baseline Character string indicating which biomass baseline to use
-#'   for `biomass_target`: `"auto"` (default), `"B0"`, or `"K"`.
+#'   for `biomass_target`: `"auto"` (default), `"B_initial"`, or `"K"`.
 #' @param verbose Logical, print progress messages (default: FALSE).
 #'
 #' @return A list with class \code{"profile_likelihood"} containing:
@@ -92,7 +92,7 @@ profile_likelihood <- function(model_fit,
                                range_factor = 3,
                                delta = 0.5,
                                biomass_target = NULL,
-                               baseline = c("auto", "B0", "K"),
+                               baseline = c("auto", "B_initial", "K"),
                                verbose = FALSE) {
   defaults <- resolve_reference_point_defaults(
     biomass_target = biomass_target,
@@ -519,9 +519,9 @@ profile_likelihood <- function(model_fit,
 .resolve_log_name <- function(pname, par_names, areas = NULL) {
   # Direct log-scale mapping
   # e.g. "r" -> "log_r", "K" -> "log_K", "sigma_obs" -> "log_sigma_obs"
-  # Per-area: "q.A1" -> "log_q_A1", "B0.A1" -> "log_B0_A1"
+  # Per-area: "q.A1" -> "log_q_A1", "B_initial.A1" -> "log_B_initial_A1"
 
-  if (!is.null(areas) && length(areas) > 1L && pname %in% c("K", "q", "B0")) {
+  if (!is.null(areas) && length(areas) > 1L && pname %in% c("K", "q", "B_initial")) {
     return(NULL)
   }
 
@@ -543,7 +543,7 @@ profile_likelihood <- function(model_fit,
 .naturalise_profile_parameters <- function(log_par) {
   nat_par <- exp(log_par)
   nat_names <- sub("^log_", "", names(log_par))
-  nat_names <- sub("^(q|B0|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat_names)
+  nat_names <- sub("^(q|B_initial|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat_names)
   names(nat_par) <- nat_names
   nat_par
 }

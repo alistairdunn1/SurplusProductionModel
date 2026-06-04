@@ -1212,8 +1212,8 @@ calculate_model_results <- function(parameters, data) {
       stop("Missing K parameter for single-area model")
     }
   }
-  B0_vec <- d0 * K_vec
-  names(B0_vec) <- areas
+  B_initial_vec <- d0 * K_vec
+  names(B_initial_vec) <- areas
 
   # Initialize outputs
   biomass <- matrix(NA_real_, nrow = n_years, ncol = n_areas, dimnames = list(as.character(data$years), areas))
@@ -1267,7 +1267,7 @@ calculate_model_results <- function(parameters, data) {
   }
 
   # Biomass recursion per area
-  biomass[1, ] <- as.numeric(B0_vec)
+  biomass[1, ] <- as.numeric(B_initial_vec)
 
   if (spinup_years > 0) {
     b_spin <- biomass[1, ]

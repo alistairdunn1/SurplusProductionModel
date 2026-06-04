@@ -209,11 +209,11 @@ fitted.ProductionModel <- function(object, ...) {
 #'
 #' @param x A ProductionModel object
 #' @param biomass_target Optional target biomass ratio (for example, `0.4` for 40% of baseline biomass) used to report target reference points.
-#' @param baseline Baseline biomass used for target calculations. One of `"auto"`, `"B0"`, or `"K"`.
+#' @param baseline Baseline biomass used for target calculations. One of `"auto"`, `"B_initial"`, or `"K"`.
 #' @param ... Additional arguments (currently unused)
 #' @return Invisibly returns the object
 #' @export
-print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...) {
+print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto", "B_initial", "K"), ...) {
   defaults <- resolve_reference_point_defaults(
     biomass_target = biomass_target,
     baseline = baseline,
@@ -312,11 +312,11 @@ print.ProductionModel <- function(x, biomass_target = NULL, baseline = c("auto",
 #'
 #' @param object A ProductionModel object
 #' @param biomass_target Optional target biomass ratio (for example, `0.4` for 40% of baseline biomass) used to report target reference points.
-#' @param baseline Baseline biomass used for target calculations. One of `"auto"`, `"B0"`, or `"K"`.
+#' @param baseline Baseline biomass used for target calculations. One of `"auto"`, `"B_initial"`, or `"K"`.
 #' @param ... Additional arguments (currently unused)
 #' @return Invisibly returns a list of summary components
 #' @export
-summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...) {
+summary.ProductionModel <- function(object, biomass_target = NULL, baseline = c("auto", "B_initial", "K"), ...) {
   defaults <- resolve_reference_point_defaults(
     biomass_target = biomass_target,
     baseline = baseline,

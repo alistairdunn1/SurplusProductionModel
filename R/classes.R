@@ -5,8 +5,8 @@
 #' containing the following elements:
 #'
 #' \describe{
-#'   \item{parameters}{A named numeric vector of model parameters (r, K, m, q, sigma_proc, sigma_obs, and optionally B0).
-#'     For multi-area/index models, parameters may include q.<area>, q.<area>.<label>, or B0.<area>.}
+#'   \item{parameters}{A named numeric vector of model parameters (r, K, m, q, sigma_proc, sigma_obs, and optionally B_initial).
+#'     For multi-area/index models, parameters may include q.<area>, q.<area>.<label>, or B_initial.<area>.}
 #'   \item{data}{A list containing model data (years, catch, cpue, effort).}
 #'   \item{results}{A list containing model fitting results (empty until fitted).}
 #'   \item{fitted}{Logical indicating whether the model has been fitted.}
@@ -58,7 +58,7 @@ validate_ProductionModel <- function(x) {
   # ---- parameters ----
   if ("parameters" %in% names(x) && length(x$parameters) > 0) {
     core_required <- c("r", "m", "sigma_obs")
-    optional_params <- c("q", "sigma_proc", "sigma_process", "B0", "movement_rate")
+    optional_params <- c("q", "sigma_proc", "sigma_process", "B_initial", "movement_rate")
     param_names <- names(x$parameters)
 
     if (is.null(param_names)) {
@@ -80,7 +80,7 @@ validate_ProductionModel <- function(x) {
 
       is_k_like <- grepl("^K(\\.|$)", param_names)
       is_q_like <- grepl("^q(\\.|$)", param_names)
-      is_b0_like <- grepl("^B0(\\.|$)", param_names)
+      is_b_initial_like <- grepl("^B_initial(\\.|$)", param_names)
 
       if (!any(is_k_like)) {
         errors <- c(errors, "At least one carrying-capacity parameter 'K' or 'K.<area>' must be provided")
@@ -110,7 +110,7 @@ validate_ProductionModel <- function(x) {
       }
 
       allowed_core <- c(core_required, optional_params)
-      extra_params <- param_names[!(param_names %in% allowed_core | is_k_like | is_q_like | is_b0_like)]
+      extra_params <- param_names[!(param_names %in% allowed_core | is_k_like | is_q_like | is_b_initial_like)]
       if (length(extra_params) > 0) {
         errors <- c(errors, paste("Unknown parameters:", paste(extra_params, collapse = ", ")))
       }
@@ -164,11 +164,11 @@ validate_ProductionModel <- function(x) {
       }
     }
 
-    b0_like_idx <- grepl("^B0(\\.|$)", names(x$parameters))
-    if (any(b0_like_idx)) {
-      b0_vals <- x$parameters[b0_like_idx]
-      if (any(!is.finite(b0_vals) | b0_vals <= 0)) {
-        errors <- c(errors, "All initial biomass parameters 'B0*' must be positive and finite")
+    b_initial_like_idx <- grepl("^B_initial(\\.|$)", names(x$parameters))
+    if (any(b_initial_like_idx)) {
+      b_initial_vals <- x$parameters[b_initial_like_idx]
+      if (any(!is.finite(b_initial_vals) | b_initial_vals <= 0)) {
+        errors <- c(errors, "All initial biomass parameters 'B_initial*' must be positive and finite")
       }
     }
   }
