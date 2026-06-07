@@ -4,7 +4,7 @@
 \alias{.count_divergences}
 \title{Count divergent transitions}
 \usage{
-.count_divergences(stanfit)
+.count_divergences(snuts_fit)
 }
 \description{
 Count divergent transitions

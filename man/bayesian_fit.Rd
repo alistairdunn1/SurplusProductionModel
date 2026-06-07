@@ -15,7 +15,8 @@ bayesian_fit(
   upper = numeric(0),
   laplace = FALSE,
   biomass_target = NULL,
-  baseline = c("auto", "B0", "K"),
+  baseline = c("auto", "B_initial", "K"),
+  globals = NULL,
   ...
 )
 }
@@ -52,16 +53,21 @@ used to add depletion-based posterior summaries such as
 \code{"B_40\%K"} or \code{"F_40\%B0"}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
-for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or \code{"K"}.}
+for \code{biomass_target}: \code{"auto"} (default), \code{"B_initial"}, or \code{"K"}.}
+
+\item{globals}{Named list of objects to pass to parallel R sessions
+(required when RTMB model closures reference external data or functions).
+Passed to \code{\link[SparseNUTS]{sample_snuts}} as-is.  Default
+\code{NULL} is suitable for self-contained models.}
 
 \item{...}{Additional arguments passed to
-\code{\link[rstan]{sampling}} (e.g. \code{control},
-\code{adapt_delta}).}
+\code{\link[SparseNUTS]{sample_snuts}} (e.g. \code{metric},
+\code{model_name}).}
 }
 \value{
 An S3 object of class \code{"bayes_fit"} containing:
 \describe{
-\item{stanfit}{The \code{stanfit} object from \pkg{rstan}.}
+\item{snuts_fit}{The \code{tmbfit} object from \pkg{SparseNUTS}.}
 \item{posterior}{A matrix of posterior samples (rows = draws,
 columns = natural-scale parameters + derived quantities).}
 \item{log_posterior}{Matrix of posterior samples on the log scale.}
@@ -78,8 +84,8 @@ for each parameter.}
 }
 \description{
 Draws posterior samples from the joint parameter distribution of a
-fitted \code{ProductionModel} using Stan's NUTS sampler via
-\code{\link[tmbstan]{tmbstan}}.  The starting point is the maximum
+fitted \code{ProductionModel} using Stan's sparse NUTS sampler via
+\code{\link[SparseNUTS]{sample_snuts}}.  The starting point is the maximum
 likelihood estimate so that chains begin in a high-density region.
 }
 \details{
@@ -97,7 +103,8 @@ targets for each posterior draw.
 
 \strong{Diagnostics.}
 Standard Stan diagnostics (divergent transitions, tree depth,
-low E-BFMI) are available via the returned \code{stanfit} object.
+Divergences and sampler parameters are available via
+\code{SparseNUTS::extract_sampler_params(x$snuts_fit)}.
 The \code{print} and \code{plot} methods provide quick summaries.
 }
 \examples{

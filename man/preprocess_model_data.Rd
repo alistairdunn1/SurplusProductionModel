@@ -7,7 +7,7 @@
 preprocess_model_data(cpue_data, catch_data)
 }
 \arguments{
-\item{cpue_data}{Data frame with year, cpue, optional area column}
+\item{cpue_data}{Data frame with year, cpue, optional area/label columns, and optional observation-uncertainty inputs such as cv, se, or obs_sd_log}
 
 \item{catch_data}{Data frame with year, catch, optional area column}
 }

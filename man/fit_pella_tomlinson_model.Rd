@@ -9,7 +9,7 @@ fit_pella_tomlinson_model(data, params_init = NULL, options = list())
 \arguments{
 \item{data}{List containing model data with elements:
 \describe{
-\item{cpue_data}{Data frame with columns: year, cpue, optional: area}
+\item{cpue_data}{Data frame with columns: year, cpue, optional: area, label, and observation-uncertainty inputs such as cv, se, or obs_sd_log}
 \item{catch_data}{Data frame with columns: year, catch, optional: area}
 \item{movement}{optional list with movement inputs: distance_matrix (area by area matrix), attractiveness (named numeric by area)}
 }}
@@ -20,6 +20,8 @@ If NULL, starting values are generated automatically.}
 \item{options}{List of optimization options (optional):
 \describe{
 \item{silent}{Logical, suppress RTMB output (default: TRUE)}
+\item{show_starting_values_message}{Logical, print a message when
+starting values are generated automatically (default: TRUE).}
 \item{control}{List of control parameters for nlminb}
 \item{validate_data}{Logical, run data validation (default: TRUE)}
 \item{process_noise}{Logical, enable state-space process deviations as
@@ -35,17 +37,31 @@ supplied, linear covariate effects are included in biomass dynamics.}
 environmental covariates (default: 0).}
 \item{env_scale}{Logical, center and scale covariates before fitting
 (default: TRUE).}
+\item{estimate_movement_rate}{Logical, estimate \code{movement_rate}
+as a model parameter when movement inputs are supplied
+(default: FALSE).}
+\item{movement_rate_start}{Optional positive numeric starting value
+for \code{movement_rate} when \code{estimate_movement_rate = TRUE}.
+If NULL, the fitter uses \code{data$movement$movement_rate} when
+provided, otherwise 0.12. Must lie in \code{(0, 1)}.}
+\item{spinup_years}{Non-negative integer number of deterministic
+pre-data years (zero catch) used to spin up biomass before the first
+observation year (default: 50).}
 \item{n_starts}{Integer, number of random restarts (default: 1).
 When > 1, the optimizer is run from \code{n_starts} different
 starting vectors (the original plus jittered versions) and the
 run with the lowest objective is retained.}
 \item{jitter_sd}{Numeric, standard deviation of log-normal jitter
 applied to starting values for multi-start (default: 0.2).}
+\item{area_k_shares}{Deprecated and ignored. Carrying capacity is now
+estimated independently for each area in multi-area fits.}
 \item{priors}{Optional named list of priors on model parameters.
 Each element is a list with \code{dist} and distribution-specific
 fields. Supported distributions are:\cr
 \code{normal}: \code{list(dist = "normal", mean = ..., sd = ...)}\cr
 \code{lognormal}: \code{list(dist = "lognormal", meanlog = ..., sdlog = ...)}\cr
+\code{exponential}: \code{list(dist = "exponential", rate = ...)}
+(applied on natural scale for log-transformed positive parameters)
 Parameter names can be supplied in natural form (e.g. \code{"r"},
 \code{"K"}) or log form (e.g. \code{"log_r"}, \code{"log_K"}).}
 }}
@@ -78,10 +94,6 @@ random effects.
 In both modes, parameters are log-transformed where needed to enforce
 positivity constraints.
 }
-\references{
-Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
-}
-
 \examples{
 \dontrun{
 # Prepare data
@@ -108,4 +120,7 @@ fit_pr <- fit_pella_tomlinson_model(
 print(model_fit)
 }
 
+}
+\references{
+Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
 }

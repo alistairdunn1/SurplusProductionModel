@@ -7,7 +7,7 @@
 calculate_reference_points(
   model_fit,
   biomass_target = NULL,
-  baseline = c("auto", "B0", "K")
+  baseline = c("auto", "B_initial", "K")
 )
 }
 \arguments{
@@ -19,9 +19,9 @@ points. If omitted, uses package default from
 \code{get_reference_point_defaults()}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
-for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or \code{"K"}. In
-\code{"auto"} mode, the function uses fitted \code{B0} if available and otherwise
-falls back to \code{K}. If omitted, uses package default from
+for \code{biomass_target}: \code{"auto"} (default), \code{"B_initial"}, or \code{"K"}. In
+\code{"auto"} mode, the function uses fitted \code{B_initial} if available and
+otherwise falls back to \code{K}. If omitted, uses package default from
 \code{get_reference_point_defaults()}.}
 }
 \value{
@@ -55,7 +55,7 @@ B_x = x * B_base
 
 F_x = r / m * (1 - (B_x / K)^(m - 1))
 
-where \code{B_base} is either fitted \code{B0} or \code{K}, depending on \code{baseline}.
+where \code{B_base} is either fitted \code{B_initial} or \code{K}, depending on \code{baseline}.
 
 For special cases:
 \itemize{
@@ -66,14 +66,6 @@ For special cases:
 Current status is calculated relative to reference points using the
 final year biomass estimate from the fitted model.
 }
-\references{
-Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
-
-Schaefer, M. B. (1954). Some aspects of the dynamics of populations important to the management of the commercial marine fisheries. Inter-American Tropical Tuna Commission Bulletin 1, 27-56.
-
-Fox, W. W., Jr. (1970). An exponential surplus-yield model for optimizing exploited fish populations. Transactions of the American Fisheries Society 99(1), 80-88.
-}
-
 \examples{
 \dontrun{
 # Assuming you have a fitted model
@@ -84,14 +76,21 @@ print(ref_points)
 msy <- ref_points$msy
 bmsy <- ref_points$bmsy
 
-# Calculate B_40\%B0 and F_40\%B0 style targets
+# Calculate B_40\%B_initial and F_40\%B_initial style targets
 target_ref_points <- calculate_reference_points(
   fitted_model,
   biomass_target = 0.4,
-  baseline = "B0"
+  baseline = "B_initial"
 )
 }
 
+}
+\references{
+Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
+
+Schaefer, M. B. (1954). Some aspects of the dynamics of populations important to the management of the commercial marine fisheries. Inter-American Tropical Tuna Commission Bulletin 1, 27-56.
+
+Fox, W. W., Jr. (1970). An exponential surplus-yield model for optimizing exploited fish populations. Transactions of the American Fisheries Society 99(1), 80-88.
 }
 \seealso{
 \code{\link{fit_pella_tomlinson_model}} for model fitting

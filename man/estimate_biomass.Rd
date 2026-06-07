@@ -12,15 +12,25 @@ estimate_biomass(model_fit, years = NULL)
 \item{years}{Optional vector of years to extract (defaults to all fitted years)}
 }
 \value{
-Matrix with columns: year, biomass, harvest_rate (if available)
-or vector if single area
+Data frame with biomass estimates. For multi-area models, includes:
+\itemize{
+\item \code{year}: Model year
+\item \code{biomass}: Total biomass across all areas
+\item \code{A1, A2, ...}: Area-specific biomass values
+\item \code{harvest_rate}: Total harvest rate (if available)
+\item \code{harvest_rate.A1, ...}: Area-specific harvest rates (if available)
+}
+For single-area models, returns year, biomass, and harvest_rate (if available).
 }
 \description{
 Extract biomass estimates from a fitted ProductionModel object.
 }
 \details{
 Extracts the estimated biomass trajectory from a fitted surplus production
-model. If harvest rates were calculated during fitting, they are also included.
+model. For multi-area models, both the total biomass (sum across areas) and
+area-specific biomasses are returned, allowing users to work with either
+aggregated or disaggregated values. The \code{biomass} column always contains
+the total biomass for consistency across single- and multi-area models.
 }
 \examples{
 \dontrun{
@@ -29,6 +39,10 @@ biomass_estimates <- estimate_biomass(fitted_model)
 
 # Extract specific years
 recent_biomass <- estimate_biomass(fitted_model, years = 2015:2020)
+
+# For multi-area models, access area-specific biomass
+area1_biomass <- biomass_estimates$A1
+total_biomass <- biomass_estimates$biomass
 }
 
 }

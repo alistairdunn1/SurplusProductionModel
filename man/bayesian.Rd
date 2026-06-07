@@ -2,10 +2,10 @@
 % Please edit documentation in R/bayesian.R
 \name{bayesian}
 \alias{bayesian}
-\title{Bayesian Inference via tmbstan}
+\title{Bayesian Inference via SparseNUTS}
 \description{
 Functions for running MCMC sampling on a fitted
-\code{\link{ProductionModel}} using the \pkg{tmbstan} package,
+\code{\link{ProductionModel}} using the \pkg{SparseNUTS} package,
 which couples a TMB/RTMB objective function with Stan's
-No-U-Turn Sampler (NUTS).
+sparse No-U-Turn Sampler (SNUTS).
 }

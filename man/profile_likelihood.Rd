@@ -12,7 +12,7 @@ profile_likelihood(
   range_factor = 3,
   delta = 0.5,
   biomass_target = NULL,
-  baseline = c("auto", "B0", "K"),
+  baseline = c("auto", "B_initial", "K"),
   verbose = FALSE
 )
 }
@@ -41,7 +41,7 @@ used to add depletion-based derived quantities such as \code{"B_40\%K"}
 or \code{"F_40\%B0"}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
-for \code{biomass_target}: \code{"auto"} (default), \code{"B0"}, or \code{"K"}.}
+for \code{biomass_target}: \code{"auto"} (default), \code{"B_initial"}, or \code{"K"}.}
 
 \item{verbose}{Logical, print progress messages (default: FALSE).}
 }

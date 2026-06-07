@@ -88,7 +88,6 @@ Fox, W. W., Jr. (1970). An exponential surplus-yield model for optimizing exploi
 
 Turchin, P. (1998). Quantitative Analysis of Movement: Measuring and Modelling Population Redistribution in Animals and Plants. Sinauer Associates, Sunderland, MA.
 }
-
 \seealso{
 Useful links:
 \itemize{

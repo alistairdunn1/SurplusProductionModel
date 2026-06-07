@@ -4,16 +4,19 @@
 \alias{summary.ProductionModel}
 \title{Summary Method for ProductionModel}
 \usage{
-\method{summary}{ProductionModel}(object, biomass_target = NULL, baseline = c("auto", "B0", "K"), ...)
+\method{summary}{ProductionModel}(
+  object,
+  biomass_target = NULL,
+  baseline = c("auto", "B_initial", "K"),
+  ...
+)
 }
 \arguments{
 \item{object}{A ProductionModel object}
 
-\item{biomass_target}{Optional target biomass ratio (for example, \code{0.4} for
-40\% of baseline biomass) used to report target reference points.}
+\item{biomass_target}{Optional target biomass ratio (for example, \code{0.4} for 40\% of baseline biomass) used to report target reference points.}
 
-\item{baseline}{Baseline biomass used for target calculations. One of
-\code{"auto"}, \code{"B0"}, or \code{"K"}.}
+\item{baseline}{Baseline biomass used for target calculations. One of \code{"auto"}, \code{"B_initial"}, or \code{"K"}.}
 
 \item{...}{Additional arguments (currently unused)}
 }

@@ -10,8 +10,8 @@ containing the following elements:
 }
 \details{
 \describe{
-\item{parameters}{A named numeric vector of model parameters (r, K, m, q, sigma_proc, sigma_obs, and optionally B0).
-For multi-area/index models, parameters may include q.\if{html}{\out{<area>}}, q.\if{html}{\out{<area>}}.\if{html}{\out{<label>}}, or B0.\if{html}{\out{<area>}}.}
+\item{parameters}{A named numeric vector of model parameters (r, K, m, q, sigma_proc, sigma_obs, and optionally B_initial).
+For multi-area/index models, parameters may include q.\if{html}{\out{<area>}}, q.\if{html}{\out{<area>}}.\if{html}{\out{<label>}}, or B_initial.\if{html}{\out{<area>}}.}
 \item{data}{A list containing model data (years, catch, cpue, effort).}
 \item{results}{A list containing model fitting results (empty until fitted).}
 \item{fitted}{Logical indicating whether the model has been fitted.}

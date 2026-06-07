@@ -492,12 +492,22 @@ resolve_reference_point_defaults <- function(biomass_target,
 #' @param model_fit A fitted ProductionModel object
 #' @param years Optional vector of years to extract (defaults to all fitted years)
 #'
-#' @return Matrix with columns: year, biomass, harvest_rate (if available)
-#'   or vector if single area
+#' @return Data frame with biomass estimates. For multi-area models, includes:
+#'   \itemize{
+#'     \item \code{year}: Model year
+#'     \item \code{biomass}: Total biomass across all areas
+#'     \item \code{A1, A2, ...}: Area-specific biomass values
+#'     \item \code{harvest_rate}: Total harvest rate (if available)
+#'     \item \code{harvest_rate.A1, ...}: Area-specific harvest rates (if available)
+#'   }
+#'   For single-area models, returns year, biomass, and harvest_rate (if available).
 #'
 #' @details
 #' Extracts the estimated biomass trajectory from a fitted surplus production
-#' model. If harvest rates were calculated during fitting, they are also included.
+#' model. For multi-area models, both the total biomass (sum across areas) and
+#' area-specific biomasses are returned, allowing users to work with either
+#' aggregated or disaggregated values. The \code{biomass} column always contains
+#' the total biomass for consistency across single- and multi-area models.
 #'
 #' @examples
 #' \dontrun{
@@ -506,6 +516,10 @@ resolve_reference_point_defaults <- function(biomass_target,
 #'
 #' # Extract specific years
 #' recent_biomass <- estimate_biomass(fitted_model, years = 2015:2020)
+#'
+#' # For multi-area models, access area-specific biomass
+#' area1_biomass <- biomass_estimates$A1
+#' total_biomass <- biomass_estimates$biomass
 #' }
 #'
 #' @export
@@ -527,15 +541,38 @@ estimate_biomass <- function(model_fit, years = NULL) {
   model_years <- model_fit$data$years
   biomass_values <- model_fit$results$biomass
 
-  # Create results matrix
-  results <- data.frame(
-    year = model_years,
-    biomass = biomass_values
-  )
+  # Create results data frame starting with year
+  results <- data.frame(year = model_years)
+
+  # Add biomass columns
+  # For multi-area models: include both total and area-specific biomasses
+  if (is.matrix(biomass_values)) {
+    # Add total biomass first (sum across areas)
+    results$biomass <- rowSums(biomass_values)
+    # Add area-specific biomasses
+    for (i in seq_len(ncol(biomass_values))) {
+      col_name <- colnames(biomass_values)[i]
+      results[[col_name]] <- biomass_values[, i]
+    }
+  } else {
+    # Single area or already aggregated: biomass is the total
+    results$biomass <- as.numeric(biomass_values)
+  }
 
   # Add harvest rates if available
   if ("harvest_rate" %in% names(model_fit$results)) {
-    results$harvest_rate <- model_fit$results$harvest_rate
+    hr <- model_fit$results$harvest_rate
+    if (is.matrix(hr)) {
+      # Add total harvest rate (sum across areas)
+      results$harvest_rate <- rowSums(hr)
+      # Add area-specific harvest rates
+      for (i in seq_len(ncol(hr))) {
+        col_name <- paste0("harvest_rate.", colnames(hr)[i])
+        results[[col_name]] <- hr[, i]
+      }
+    } else {
+      results$harvest_rate <- as.numeric(hr)
+    }
   }
 
   # Filter to requested years if specified

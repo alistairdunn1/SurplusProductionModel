@@ -3,14 +3,12 @@
 \name{.simple_ess}
 \alias{.simple_ess}
 \title{Simple effective sample size (bulk ESS) from a matrix
-Uses the rstan summary if the stanfit is available;
-otherwise falls back to a simple autocorrelation-based estimate.}
+Uses an autocorrelation-based estimate.}
 \usage{
 .simple_ess(mat)
 }
 \description{
 Simple effective sample size (bulk ESS) from a matrix
-Uses the rstan summary if the stanfit is available;
-otherwise falls back to a simple autocorrelation-based estimate.
+Uses an autocorrelation-based estimate.
 }
 \keyword{internal}

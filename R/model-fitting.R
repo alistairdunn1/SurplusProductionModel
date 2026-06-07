@@ -134,7 +134,8 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     movement_rate_start = NULL,
     spinup_years = 50L,
     area_k_shares = NULL,
-    priors = NULL
+    priors = NULL,
+    calculate_se = TRUE
   )
   options <- modifyList(default_options, options)
 
@@ -541,18 +542,20 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   hessian_valid <- FALSE
   sdr <- NULL
 
-  tryCatch(
-    {
-      sdr <- RTMB::sdreport(obj)
-      hessian_valid <- sdr$pdHess
-      # Fixed parameter SEs
-      summ_fixed <- summary(sdr, "fixed")
-      std_errors <- setNames(summ_fixed[, "Std. Error"], rownames(summ_fixed))
-    },
-    error = function(e) {
-      warning("sdreport failed: ", e$message)
-    }
-  )
+  if (isTRUE(options$calculate_se)) {
+    tryCatch(
+      {
+        sdr <- RTMB::sdreport(obj)
+        hessian_valid <- sdr$pdHess
+        # Fixed parameter SEs
+        summ_fixed <- summary(sdr, "fixed")
+        std_errors <- setNames(summ_fixed[, "Std. Error"], rownames(summ_fixed))
+      },
+      error = function(e) {
+        warning("sdreport failed: ", e$message)
+      }
+    )
+  }
 
   # ---- Extract results ------------------------------------------------
   # First, transform parameters back to natural scale (needed for
