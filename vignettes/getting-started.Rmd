@@ -118,12 +118,15 @@ The estimated natural-scale parameters:
 
 ```{r show-params}
 fitted_params <- fit$results$parameters
-cat(sprintf("  r         = %.4f  (intrinsic growth rate)\n", fitted_params["r"]))
-cat(sprintf("  K         = %.0f  (carrying capacity, t)\n",  fitted_params["K"]))
-cat(sprintf("  m         = %.1f    (shape, fixed)\n",        fitted_params["m"]))
-cat(sprintf("  sigma_obs = %.3f  (observation error SD)\n",  fitted_params["sigma_obs"]))
-cat(sprintf("  q         = %.6f  (catchability)\n",          fitted_params["q"]))
-cat(sprintf("  B0        = %.0f  (initial biomass, t)\n",    fitted_params["B0"]))
+# Single-area fits store per-area names (e.g. "K.A1", "q.A1"); accept either.
+getp <- function(nm) unname(fitted_params[startsWith(names(fitted_params), nm)][1])
+cat(sprintf("  r         = %.4f  (intrinsic growth rate)\n", getp("r")))
+cat(sprintf("  K         = %.0f  (carrying capacity, t)\n",  getp("K")))
+cat(sprintf("  m         = %.1f    (shape, fixed)\n",        getp("m")))
+cat(sprintf("  sigma_obs = %.3f  (observation error SD)\n",  getp("sigma_obs")))
+cat(sprintf("  q         = %.6f  (catchability)\n",          getp("q")))
+cat(sprintf("  d0        = %.3f  (initial depletion)\n",     getp("d0")))
+cat(sprintf("  B_initial = %.0f  (initial biomass = d0 * K, t)\n", getp("d0") * getp("K")))
 ```
 
 ## Reference Points
@@ -145,11 +148,11 @@ model estimates with the true values stored in `ross_sea_true_params`:
 true <- ross_sea_true_params
 
 cat(sprintf("Parameter  %10s  %10s\n", "True", "Estimated"))
-cat(sprintf("r          %10.4f  %10.4f\n", true$r,    fitted_params["r"]))
-cat(sprintf("K          %10.0f  %10.0f\n", true$K,    fitted_params["K"]))
-cat(sprintf("m          %10.2f  %10.2f\n", true$m,    fitted_params["m"]))
-cat(sprintf("q          %10.6f  %10.6f\n", true$q_LL, fitted_params["q"]))
-cat(sprintf("B0         %10.0f  %10.0f\n", true$B0,   fitted_params["B0"]))
+cat(sprintf("r          %10.4f  %10.4f\n", true$r,    getp("r")))
+cat(sprintf("K          %10.0f  %10.0f\n", true$K,    getp("K")))
+cat(sprintf("m          %10.2f  %10.2f\n", true$m,    getp("m")))
+cat(sprintf("q          %10.6f  %10.6f\n", true$q_LL, getp("q")))
+cat(sprintf("B_initial  %10.0f  %10.0f\n", true$B0,   getp("d0") * getp("K")))
 ```
 
 Note that exact recovery of the generating parameters is not expected from
@@ -220,9 +223,15 @@ print(fit_multi)
 
 The Pella-Tomlinson surplus production model used in this package is:
 
-**Production function:**
+**Production function (standard Pella-Tomlinson):**
 
-$$P(B) = \frac{r \, B}{m} \left[ 1 - \left(\frac{B}{K}\right)^{m-1} \right]$$
+$$P(B) = \frac{r \, B}{m - 1} \left[ 1 - \left(\frac{B}{K}\right)^{m-1} \right]$$
+
+Here *r* is the intrinsic growth rate. The model reduces to the Schaefer
+form $P(B) = r\,B\,(1 - B/K)$ at $m = 2$ and, in the limit $m \to 1$, to the
+Fox form $P(B) = r\,B\,\log(K/B)$. The maximum-sustainable-yield reference
+points are $B_{\text{MSY}} = K\,m^{-1/(m-1)}$, $F_{\text{MSY}} = r/m$, and
+$\text{MSY} = F_{\text{MSY}}\,B_{\text{MSY}}$.
 
 **State equation (biomass dynamics):**
 

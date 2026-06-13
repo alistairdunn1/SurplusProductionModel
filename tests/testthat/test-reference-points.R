@@ -119,9 +119,10 @@ test_that("calculate_reference_points works for general Pella-Tomlinson model", 
   r <- 0.3
   K <- 5000
   m <- 3.0
-  expected_msy <- r * K * (m - 1)^((m - 1) / m) / m
-  expected_bmsy <- K * (m - 1)^(1 / m) / m
-  expected_fmsy <- expected_msy / expected_bmsy
+  # Standard Pella-Tomlinson: BMSY = K m^(-1/(m-1)), FMSY = r/m
+  expected_bmsy <- K * m^(-1 / (m - 1))
+  expected_fmsy <- r / m
+  expected_msy <- expected_fmsy * expected_bmsy
 
   expect_equal(ref_points$msy, expected_msy, tolerance = 1e-10)
   expect_equal(ref_points$bmsy, expected_bmsy, tolerance = 1e-10)
@@ -142,12 +143,12 @@ test_that("calculate_reference_points handles edge cases", {
   )
   fitted_model$fitted <- TRUE
 
-  # Should give warning and use Schaefer approximation
+  # m < 1 warns but still returns the standard Pella-Tomlinson formulae
   expect_warning(ref_points <- calculate_reference_points(fitted_model))
 
-  # Should fall back to Schaefer values
-  expect_equal(ref_points$msy, 0.3 * 5000 / 4)
-  expect_equal(ref_points$bmsy, 5000 / 2)
+  expected_bmsy <- 5000 * 0.5^(-1 / (0.5 - 1))
+  expect_equal(ref_points$bmsy, expected_bmsy)
+  expect_equal(ref_points$msy, (0.3 / 0.5) * expected_bmsy)
 
   # Test negative parameter values
   fitted_model$parameters["r"] <- -0.3
@@ -204,7 +205,8 @@ test_that("calculate_reference_points calculates user-defined biomass targets an
     catch = rep(1000, 6),
     cpue = rep(1.5, 6),
     effort = rep(1000 / 1.5, 6),
-    parameters = c(r = 0.3, K = 5000, m = 2.0, B0 = 6000, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
+    # d0 = 1.2 so the initial-biomass baseline B_initial = d0 * K = 6000
+    parameters = c(r = 0.3, K = 5000, m = 2.0, d0 = 1.2, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
   fitted_model$fitted <- TRUE
 
@@ -212,12 +214,12 @@ test_that("calculate_reference_points calculates user-defined biomass targets an
 
   expect_true("target_reference_points" %in% names(ref_points))
   expect_equal(nrow(ref_points$target_reference_points), 2)
-  expect_equal(ref_points$target_reference_points$baseline, c("B0", "B0"))
-  expect_equal(ref_points$target_reference_points$biomass_name, c("B_40%B0", "B_35%B0"))
-  expect_equal(ref_points$target_reference_points$f_name, c("F_40%B0", "F_35%B0"))
+  expect_equal(ref_points$target_reference_points$baseline, c("B_initial", "B_initial"))
+  expect_equal(ref_points$target_reference_points$biomass_name, c("B_40%B_initial", "B_35%B_initial"))
+  expect_equal(ref_points$target_reference_points$f_name, c("F_40%B_initial", "F_35%B_initial"))
 
   expected_b40 <- 0.4 * 6000
-  expected_f40 <- 0.3 / 2 * (1 - expected_b40 / 5000)
+  expected_f40 <- 0.3 / (2 - 1) * (1 - expected_b40 / 5000)
   expect_equal(ref_points$target_reference_points$biomass[1], expected_b40, tolerance = 1e-10)
   expect_equal(ref_points$target_reference_points$fishing_mortality[1], expected_f40, tolerance = 1e-10)
 })
@@ -228,7 +230,7 @@ test_that("calculate_reference_points can use K as the depletion baseline", {
     catch = rep(1000, 6),
     cpue = rep(1.5, 6),
     effort = rep(1000 / 1.5, 6),
-    parameters = c(r = 0.3, K = 5000, m = 2.0, B0 = 6000, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
+    parameters = c(r = 0.3, K = 5000, m = 2.0, d0 = 1.2, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
   fitted_model$fitted <- TRUE
 
@@ -238,7 +240,7 @@ test_that("calculate_reference_points can use K as the depletion baseline", {
   expect_equal(ref_points$target_reference_points$biomass_name, "B_40%K")
   expect_equal(ref_points$target_reference_points$f_name, "F_40%K")
   expect_equal(ref_points$target_reference_points$biomass, 0.4 * 5000, tolerance = 1e-10)
-  expect_equal(ref_points$target_reference_points$fishing_mortality, 0.3 / 2 * (1 - 0.4), tolerance = 1e-10)
+  expect_equal(ref_points$target_reference_points$fishing_mortality, 0.3 / (2 - 1) * (1 - 0.4), tolerance = 1e-10)
 })
 
 test_that("calculate_reference_points handles Fox depletion targets analytically", {
@@ -247,7 +249,7 @@ test_that("calculate_reference_points handles Fox depletion targets analytically
     catch = rep(1000, 6),
     cpue = rep(1.5, 6),
     effort = rep(1000 / 1.5, 6),
-    parameters = c(r = 0.3, K = 5000, m = 1.0, B0 = 6000, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
+    parameters = c(r = 0.3, K = 5000, m = 1.0, d0 = 1.2, q = 0.001, sigma_proc = 0.2, sigma_obs = 0.3)
   )
   fitted_model$fitted <- TRUE
 
@@ -272,7 +274,7 @@ test_that("calculate_reference_points validates biomass target inputs", {
   expect_error(calculate_reference_points(fitted_model, biomass_target = 0), "must be > 0 and <= 1")
   expect_error(calculate_reference_points(fitted_model, biomass_target = 1.2), "must be > 0 and <= 1")
   expect_error(calculate_reference_points(fitted_model, biomass_target = "0.4"), "must be a numeric vector")
-  expect_error(calculate_reference_points(fitted_model, biomass_target = 0.4, baseline = "B0"), "no fitted B0 parameter")
+  expect_error(calculate_reference_points(fitted_model, biomass_target = 0.4, baseline = "B_initial"), "no fitted d0 parameter")
 })
 
 test_that("print method for reference points works", {

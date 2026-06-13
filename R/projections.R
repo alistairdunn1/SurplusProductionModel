@@ -142,7 +142,7 @@ project_forward <- function(model_fit,
   hist_eps <- matrix(NA_real_, nrow = n_years - 1L, ncol = n_areas)
   for (t in seq_len(n_years - 1L)) {
     bt <- b_hist_mat[t, ]
-    prod_t <- r * bt * (1 - (bt / K)^(m - 1)) / m
+    prod_t <- .pt_production(bt, r, K, m)
     prod_t[!is.finite(prod_t)] <- 0
     b_det_next <- pmax(bt + prod_t - c_hist_mat[t, ], 1e-8)
     b_next <- pmax(b_hist_mat[t + 1L, ], 1e-8)
@@ -177,7 +177,7 @@ project_forward <- function(model_fit,
 
     for (h in seq_len(horizon)) {
       bt <- pmax(b_sim[h, , s], 1e-8)
-      prod_h <- r * bt * (1 - (bt / K)^(m - 1)) / m
+      prod_h <- .pt_production(bt, r, K, m)
       prod_h[!is.finite(prod_h)] <- 0
 
       if (control_type == "F") {

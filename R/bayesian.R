@@ -208,8 +208,9 @@ bayesian_fit <- function(model_fit,
     K_draws <- nat_mat[, K_col]
     m_draws <- nat_mat[, m_col]
 
+    # Standard Pella-Tomlinson: BMSY = K m^(-1/(m-1)), FMSY = r/m.
     BMSY_vec <- K_draws * (1 / m_draws)^(1 / (m_draws - 1))
-    FMSY_vec <- r_draws / m_draws * (1 - 1 / m_draws)
+    FMSY_vec <- r_draws / m_draws
     MSY_vec <- FMSY_vec * BMSY_vec
 
     # Handle near-singular cases (m near 1) which can produce Inf/NaN
@@ -264,8 +265,8 @@ bayesian_fit <- function(model_fit,
 #' @keywords internal
 .log_to_natural_names <- function(par_names) {
   nat <- sub("^log_", "", par_names)
-  # Convert underscore area/label suffixes to dots: q_A1 -> q.A1, B_initial_A1 -> B_initial.A1
-  nat <- sub("^(q|B_initial|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat)
+  # Convert underscore area/label suffixes to dots: q_A1 -> q.A1, K_A1 -> K.A1
+  nat <- sub("^(q|K|B_initial|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat)
   nat
 }
 
@@ -293,27 +294,24 @@ bayesian_fit <- function(model_fit,
 #' @keywords internal
 .bayesian_target_reference_points <- function(nat_mat, biomass_target, baseline) {
   nat_names <- colnames(nat_mat)
-  b_initial_cols <- grep("^B_initial(\\.|$)", nat_names)
+  has_d0 <- "d0" %in% nat_names
 
   baseline_name <- baseline
   if (baseline_name == "auto") {
-    baseline_name <- if (length(b_initial_cols) > 0) "B_initial" else "K"
+    baseline_name <- if (has_d0) "B_initial" else "K"
   }
 
-  if (baseline_name == "B_initial" && length(b_initial_cols) == 0) {
-    stop("baseline = 'B_initial' requested but no fitted B_initial parameter was found")
+  if (baseline_name == "B_initial" && !has_d0) {
+    stop("baseline = 'B_initial' requested but no fitted d0 parameter was found")
   }
 
   K_draws <- nat_mat[, "K"]
   r_draws <- nat_mat[, "r"]
   m_draws <- nat_mat[, "m"]
 
+  # B_initial = d0 * K (initial-depletion parameter times carrying capacity).
   if (baseline_name == "B_initial") {
-    if ("B_initial" %in% nat_names) {
-      baseline_draws <- nat_mat[, "B_initial"]
-    } else {
-      baseline_draws <- rowSums(nat_mat[, b_initial_cols, drop = FALSE])
-    }
+    baseline_draws <- nat_mat[, "d0"] * K_draws
   } else {
     baseline_draws <- K_draws
   }
@@ -592,9 +590,9 @@ plot.bayes_fit <- function(x, type = c("trace", "density", "pairs", "histogram")
         K_v <- exp(log_samp[, K_col])
         m_v <- exp(log_samp[, m_col])
         vals <- switch(p,
-          MSY  = (r_v / m_v * (1 - 1 / m_v)) * K_v * (1 / m_v)^(1 / (m_v - 1)),
+          MSY  = (r_v / m_v) * K_v * (1 / m_v)^(1 / (m_v - 1)),
           BMSY = K_v * (1 / m_v)^(1 / (m_v - 1)),
-          FMSY = r_v / m_v * (1 - 1 / m_v)
+          FMSY = r_v / m_v
         )
       } else if (!is.null(x$reference_point_targets) &&
         (p %in% x$reference_point_targets$biomass_name ||
@@ -616,9 +614,9 @@ plot.bayes_fit <- function(x, type = c("trace", "density", "pairs", "histogram")
         K_v <- exp(log_samp[, K_col])
         m_v <- exp(log_samp[, m_col])
         if (target_baseline == "B_initial") {
-          b_cols <- grep("^log_B_initial", colnames(log_samp))
-          if (length(b_cols) == 0) next
-          baseline_v <- rowSums(exp(log_samp[, b_cols, drop = FALSE]))
+          d0_col <- grep("^log_d0$", colnames(log_samp))
+          if (length(d0_col) == 0) next
+          baseline_v <- exp(log_samp[, d0_col[1]]) * K_v
         } else {
           baseline_v <- K_v
         }

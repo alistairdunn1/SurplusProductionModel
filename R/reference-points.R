@@ -6,6 +6,104 @@
 #' @name reference-points
 NULL
 
+#' Pella-Tomlinson Biological Reference Points
+#'
+#' Compute the maximum sustainable yield reference points for the standard
+#' Pella-Tomlinson surplus production model. This is the single canonical
+#' implementation used throughout the package (and by dependent packages) so
+#' that reference points are always consistent with the production dynamics.
+#'
+#' @param r Intrinsic growth rate (per year).
+#' @param K Carrying capacity (tonnes).
+#' @param m Shape parameter (dimensionless).
+#'
+#' @return Named list with \code{msy}, \code{bmsy}, \code{fmsy}, and a
+#'   \code{special_case} label.
+#'
+#' @details
+#' The production function is
+#' \deqn{P(B) = \frac{r}{m - 1}\,B\left(1 - (B/K)^{m-1}\right),}
+#' which reduces to the Schaefer model at \eqn{m = 2} and, in the limit
+#' \eqn{m \to 1}, to the Fox model \eqn{P(B) = r B \log(K/B)}. The
+#' corresponding reference points are
+#' \deqn{B_\mathrm{MSY} = K\,m^{-1/(m-1)}, \quad F_\mathrm{MSY} = r/m, \quad
+#'   \mathrm{MSY} = F_\mathrm{MSY}\,B_\mathrm{MSY},}
+#' with the Fox limit \eqn{B_\mathrm{MSY} = K/e}, \eqn{F_\mathrm{MSY} = r},
+#' \eqn{\mathrm{MSY} = rK/e}.
+#'
+#' @references Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
+#'
+#' @export
+pella_tomlinson_reference_points <- function(r, K, m) {
+  if (abs(m - 1) < 1e-6) {
+    bmsy <- K / exp(1)
+    fmsy <- r
+    msy <- r * K / exp(1)
+    special_case <- "Fox model (m ~ 1)"
+  } else {
+    bmsy <- K * m^(-1 / (m - 1))
+    fmsy <- r / m
+    msy <- fmsy * bmsy
+    special_case <- if (abs(m - 2) < 1e-6) {
+      "Schaefer model (m ~ 2)"
+    } else {
+      "General Pella-Tomlinson model"
+    }
+  }
+
+  list(msy = msy, bmsy = bmsy, fmsy = fmsy, special_case = special_case)
+}
+
+#' Equilibrium Harvest Rate at a Given Biomass
+#'
+#' Compute the equilibrium harvest rate (annual exploitation fraction) that
+#' holds the stock at biomass \code{biomass} under the standard
+#' Pella-Tomlinson model, namely \eqn{F = P(B)/B}.
+#'
+#' @param r Intrinsic growth rate (per year).
+#' @param K Carrying capacity (tonnes).
+#' @param m Shape parameter (dimensionless).
+#' @param biomass Numeric scalar or vector of biomass values.
+#'
+#' @return Numeric vector of equilibrium harvest rates. Values are negative
+#'   when \code{biomass > K} (no surplus production above carrying capacity).
+#'
+#' @details
+#' \deqn{F(B) = \frac{r}{m-1}\left(1 - (B/K)^{m-1}\right),}
+#' with the Fox limit \eqn{F(B) = r \log(K/B)} as \eqn{m \to 1}.
+#'
+#' @export
+pt_equilibrium_f <- function(r, K, m, biomass) {
+  if (abs(m - 1) < 1e-6) {
+    r * log(K / biomass)
+  } else {
+    (r / (m - 1)) * (1 - (biomass / K)^(m - 1))
+  }
+}
+
+#' Pella-Tomlinson Production (internal, vectorised)
+#'
+#' Plain-R surplus production for the standard Pella-Tomlinson model, used by
+#' the result-recomputation, projection, and simple-objective code paths.
+#'
+#' @param B Numeric vector of biomass values.
+#' @param r Intrinsic growth rate (per year).
+#' @param K Numeric scalar or vector of carrying capacities.
+#' @param m Shape parameter (dimensionless).
+#'
+#' @return Numeric vector of production values (non-finite entries set to 0).
+#'
+#' @keywords internal
+.pt_production <- function(B, r, K, m) {
+  prod <- if (abs(m - 1) < 1e-6) {
+    r * B * log(K / B)
+  } else {
+    (r / (m - 1)) * B * (1 - (B / K)^(m - 1))
+  }
+  prod[!is.finite(prod)] <- 0
+  prod
+}
+
 #' Set Package-Level Reference Point Defaults
 #'
 #' Sets package-wide defaults for depletion target reporting. These defaults
@@ -95,7 +193,7 @@ get_reference_point_defaults <- function() {
 #'
 #' B_x = x * B_base
 #'
-#' F_x = r / m * (1 - (B_x / K)^(m - 1))
+#' F_x = r / (m - 1) * (1 - (B_x / K)^(m - 1))
 #'
 #' where `B_base` is either fitted `B_initial` or `K`, depending on `baseline`.
 #'
@@ -261,30 +359,17 @@ calculate_reference_points_from_parameters <- function(parameters,
     stop("All parameters must be positive")
   }
 
-  if (abs(m - 1) < 1e-6) {
-    msy <- r * K / exp(1)
-    bmsy <- K / exp(1)
-    special_case <- "Fox model (m ~ 1)"
-  } else if (abs(m - 2) < 1e-6) {
-    msy <- r * K / 4
-    bmsy <- K / 2
-    special_case <- "Schaefer model (m ~ 2)"
-  } else if (m <= 1) {
-    if (warn_on_invalid_m) {
-      warning("Shape parameter m <= 1 may give unrealistic reference points")
-    }
-    msy <- r * K / 4
-    bmsy <- K / 2
-    special_case <- "General Pella-Tomlinson model"
-  } else {
-    msy <- r * K * (m - 1)^((m - 1) / m) / m
-    bmsy <- K * (m - 1)^(1 / m) / m
-    special_case <- "General Pella-Tomlinson model"
+  if (m < 1 && warn_on_invalid_m) {
+    warning("Shape parameter m < 1 may give unrealistic reference points")
   }
 
-  if (bmsy > 0) {
-    fmsy <- msy / bmsy
-  } else {
+  rp <- pella_tomlinson_reference_points(r = r, K = K, m = m)
+  msy <- rp$msy
+  bmsy <- rp$bmsy
+  fmsy <- rp$fmsy
+  special_case <- rp$special_case
+
+  if (!is.finite(bmsy) || bmsy <= 0) {
     fmsy <- NA_real_
     warning("BMSY is zero or negative, cannot calculate FMSY")
   }
@@ -377,25 +462,30 @@ print.pt_reference_points <- function(x, ...) {
 
 resolve_reference_point_baseline <- function(parameters, baseline) {
   param_names <- names(parameters)
-  b_initial_idx <- grepl("^B_initial(\\.|$)", param_names)
-  has_b_initial <- any(b_initial_idx)
+
+  # Total carrying capacity: single-area "K" or summed per-area "K.<area>".
+  K_total <- if ("K" %in% param_names) {
+    unname(parameters[["K"]])
+  } else {
+    k_idx <- grepl("^K\\.", param_names)
+    if (any(k_idx)) sum(unname(parameters[k_idx])) else NA_real_
+  }
+
+  # Initial biomass is derived from the fitted initial-depletion parameter
+  # d0 and carrying capacity: B_initial = d0 * K.
+  has_d0 <- "d0" %in% param_names
 
   if (baseline == "auto") {
-    baseline <- if (has_b_initial) "B_initial" else "K"
+    baseline <- if (has_d0) "B_initial" else "K"
   }
 
   if (baseline == "B_initial") {
-    if (!has_b_initial) {
-      stop("baseline = 'B_initial' requested but no fitted B_initial parameter was found")
+    if (!has_d0) {
+      stop("baseline = 'B_initial' requested but no fitted d0 parameter was found")
     }
-
-    if ("B_initial" %in% param_names) {
-      baseline_biomass <- unname(parameters[["B_initial"]])
-    } else {
-      baseline_biomass <- sum(unname(parameters[b_initial_idx]))
-    }
+    baseline_biomass <- unname(parameters[["d0"]]) * K_total
   } else {
-    baseline_biomass <- unname(parameters[["K"]])
+    baseline_biomass <- K_total
   }
 
   list(name = baseline, value = baseline_biomass)
@@ -431,7 +521,7 @@ calculate_target_fishing_mortality <- function(r, K, m, target_biomass) {
     return(r * log(K / target_biomass))
   }
 
-  out <- r / m * (1 - (target_biomass / K)^(m - 1))
+  out <- r / (m - 1) * (1 - (target_biomass / K)^(m - 1))
   fox_idx <- abs(m - 1) < 1e-6
   if (any(fox_idx)) {
     out[fox_idx] <- r[fox_idx] * log(K[fox_idx] / target_biomass[fox_idx])

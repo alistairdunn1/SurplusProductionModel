@@ -6,6 +6,49 @@
 #' @name model-fitting
 NULL
 
+#' Prepare Model Data
+#'
+#' Public wrapper around internal model-data preprocessing used by
+#' \code{fit_pella_tomlinson_model}. This helper returns the aligned data
+#' object expected by low-level fitting utilities.
+#'
+#' @param cpue_data Data frame with year, cpue, optional area/label columns,
+#'   and optional observation-uncertainty inputs such as cv, se, or obs_sd_log.
+#' @param catch_data Data frame with year, catch, and optional area column.
+#'
+#' @return List with aligned model inputs for fitting internals.
+#' @export
+prepare_model_data <- function(cpue_data, catch_data) {
+  preprocess_model_data(cpue_data, catch_data)
+}
+
+#' Prepare Starting Values
+#'
+#' Public wrapper around internal starting-value generation used by
+#' \code{fit_pella_tomlinson_model}. Optionally sets all K starts to a
+#' common value.
+#'
+#' @param processed_data List returned by \code{prepare_model_data}.
+#' @param k_start Optional positive numeric scalar. If supplied, all
+#'   \code{log_K} starts are set to \code{log(k_start)}.
+#'
+#' @return Named list of starting parameter values on the working scale.
+#' @export
+prepare_starting_values <- function(processed_data, k_start = NULL) {
+  starts <- generate_starting_values(processed_data)
+
+  if (!is.null(k_start)) {
+    assert_number(k_start, lower = .Machine$double.eps, .var.name = "k_start")
+    k_keys <- grep("^log_K(\\.|_|$)", names(starts), value = TRUE)
+    if (length(k_keys) == 0) {
+      stop("No log_K parameters found in generated starting values.", call. = FALSE)
+    }
+    starts[k_keys] <- log(k_start)
+  }
+
+  starts
+}
+
 #' Fit Pella-Tomlinson Surplus Production Model
 #'
 #' Fits a Pella-Tomlinson surplus production model to catch and CPUE data
@@ -137,6 +180,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     priors = NULL,
     calculate_se = TRUE
   )
+
   options <- modifyList(default_options, options)
 
   use_process_noise <- isTRUE(options$process_noise)
@@ -1275,11 +1319,11 @@ calculate_model_results <- function(parameters, data) {
   if (spinup_years > 0) {
     b_spin <- biomass[1, ]
     for (s in seq_len(spinup_years)) {
-      production <- ifelse(b_spin > 0 & K_vec > 0 & m > 0, r * b_spin * (1 - (b_spin / K_vec)^(m - 1)) / m, 0)
+      production <- .pt_production(b_spin, r, K_vec, m)
       production[!is.finite(production)] <- 0
       b_next <- pmax(b_spin + production, 0.01)
       if (has_movement) {
-        b_next <- pmax((1 - move_rate) * b_next + move_rate * as.numeric(Kmat %*% b_next), 0.01)
+        b_next <- pmax((1 - move_rate) * b_next + move_rate * as.numeric(t(Kmat) %*% b_next), 0.01)
       }
       b_spin <- b_next
     }
@@ -1311,7 +1355,7 @@ calculate_model_results <- function(parameters, data) {
 
   for (t in 1:(n_years - 1)) {
     Bt <- biomass[t, ]
-    production <- ifelse(Bt > 0 & K_vec > 0 & m > 0, r * Bt * (1 - (Bt / K_vec)^(m - 1)) / m, 0)
+    production <- .pt_production(Bt, r, K_vec, m)
     production[!is.finite(production)] <- 0
     B_det <- pmax(Bt + production - catch_mat[t, ], 0.01)
     if (has_env) {
@@ -1325,7 +1369,7 @@ calculate_model_results <- function(parameters, data) {
   if (has_movement) {
     for (t in 2:n_years) {
       Bt <- biomass[t, ]
-      biomass[t, ] <- pmax((1 - move_rate) * Bt + move_rate * as.numeric(Kmat %*% Bt), 0.01)
+      biomass[t, ] <- pmax((1 - move_rate) * Bt + move_rate * as.numeric(t(Kmat) %*% Bt), 0.01)
     }
   }
 

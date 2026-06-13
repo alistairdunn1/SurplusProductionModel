@@ -7,7 +7,8 @@ test_that("pella_tomlinson_production function works correctly", {
   # Test Schaefer special case (m = 2)
   B <- 2500 # Half of K
   production_schaefer <- pella_tomlinson_production(B, r = 0.3, K = 5000, m = 2)
-  expected_schaefer <- 0.3 * B * (1 - B / 5000) / 2 # Pella-Tomlinson with m=2
+  # Standard Pella-Tomlinson with m = 2 (Schaefer): r/(m-1) * B * (1 - B/K)
+  expected_schaefer <- 0.3 * B * (1 - B / 5000) / (2 - 1)
   expect_equal(production_schaefer, expected_schaefer, tolerance = 1e-10)
 
   # Test maximum production occurs at BMSY for Schaefer
@@ -47,7 +48,7 @@ test_that("generate_starting_values creates reasonable parameters", {
   start_vals <- generate_starting_values(data)
 
   # Check structure
-  expected_params <- c("log_r", "log_K", "log_m", "log_q", "log_sigma_proc", "log_sigma_obs", "log_B0")
+  expected_params <- c("log_r", "log_K", "log_m", "log_q", "log_sigma_proc", "log_sigma_obs", "log_d0")
   expect_true(all(expected_params %in% names(start_vals)))
   expect_equal(length(start_vals), length(expected_params))
 
@@ -64,7 +65,7 @@ test_that("generate_starting_values creates reasonable parameters", {
   expect_true(natural_params[["q"]] > 0 && natural_params[["q"]] <= 1.0)
   expect_true(natural_params[["sigma_proc"]] > 0 && natural_params[["sigma_proc"]] <= 1.0)
   expect_true(natural_params[["sigma_obs"]] > 0 && natural_params[["sigma_obs"]] <= 1.0)
-  expect_true(natural_params[["B0"]] > 0)
+  expect_true(natural_params[["d0"]] > 0)
 })
 
 test_that("preprocess_model_data works correctly", {
@@ -201,7 +202,7 @@ test_that("calculate_model_results produces expected output", {
     K = 5000,
     m = 2.0,
     q = 0.001,
-    B0 = 4000
+    d0 = 0.8 # initial depletion; B_initial = d0 * K = 4000
   )
 
   # Create test data
@@ -221,8 +222,8 @@ test_that("calculate_model_results produces expected output", {
   expect_equal(length(results$fitted_cpue), length(data$years))
   expect_equal(length(results$residuals), length(data$years))
 
-  # Check biomass starts at B0
-  expect_equal(results$biomass[1], parameters[["B0"]])
+  # Check biomass starts at B_initial = d0 * K
+  expect_equal(results$biomass[1], parameters[["d0"]] * parameters[["K"]])
 
   # Check all biomass values are positive
   expect_true(all(results$biomass > 0))

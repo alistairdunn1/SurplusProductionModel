@@ -338,8 +338,8 @@ test_that("plot.ppc_result returns ggplot", {
 test_that(".log_to_natural_names transforms correctly", {
   expect_equal(
     SurplusProductionModel:::.log_to_natural_names(
-      c("log_r", "log_K", "log_m", "log_sigma_obs", "log_q_A1", "log_B0_A1")
+      c("log_r", "log_K", "log_m", "log_sigma_obs", "log_q_A1", "log_K_A1")
     ),
-    c("r", "K", "m", "sigma_obs", "q.A1", "B0.A1")
+    c("r", "K", "m", "sigma_obs", "q.A1", "K.A1")
   )
 })

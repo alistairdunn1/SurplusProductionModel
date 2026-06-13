@@ -2,7 +2,7 @@
 
 ## Overview
 
-`SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model for Antarctic toothfish (*Dissostichus mawsoni*) stock assessment. It supports an optional state-space formulation with process error for model fitting. This package serves as the operating model foundation for the the Surplus Production Model Management Strategy Evaluation (MSE) framework.
+`SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model. It supports an optional state-space formulation with process error for model fitting. This package also serves as the operating model foundation for the the Surplus Production Model Management Strategy Evaluation (MSE) framework.
 
 ## Key Features
 
@@ -31,9 +31,9 @@
 
 ### Diagnostics & Visualization
 
-- **Reference points**: MSY, B`<sub>`MSY`</sub>`, F`<sub>`MSY`</sub>` with current B/B`<sub>`MSY`</sub>` ratio
+- **Reference points**: MSY, B `<sub>`MSY `</sub>`, F `<sub>`MSY `</sub>` with current B/B `<sub>`MSY `</sub>` ratio
 - **Residual diagnostics** (`plot_residuals()`): QQ plots, residuals vs. fitted, histograms
-- **Biomass plots** (`plot_biomass()`): trajectories with confidence bands and B`<sub>`MSY`</sub>` reference
+- **Biomass plots** (`plot_biomass()`): trajectories with confidence bands and B `<sub>`MSY `</sub>` reference
 - **Standard diagnostic panel** (`plot_model_fit()`): biomass, CPUE fit, residuals, harvest rate
 
 ## Installation
@@ -167,7 +167,7 @@ target_ref_points <- calculate_reference_points(
   baseline = "K"
 )
 target_ref_points$target_reference_points
-# Returns B_40%K and F_40%K; use baseline = "B0" when fitted B0 is available
+# Returns B_40%K and F_40%K; use baseline = "B_initial" for B_initial = d0 * K
 ```
 
 ### Step 3: Convergence Diagnostics
@@ -265,23 +265,29 @@ if (requireNamespace("tmbstan", quietly = TRUE)) {
 
 ### Diagnostic Output Summary
 
-| Function                         | Output                                                           |
-| -------------------------------- | ---------------------------------------------------------------- |
-| `plot_model_fit()`             | 4-panel: biomass, CPUE fit, residuals, harvest rate              |
-| `plot_residuals()`             | QQ plot, histogram, residuals vs fitted                          |
-| `plot_biomass()`               | Biomass trajectory with CI and B`<sub>`MSY`</sub>` reference |
-| `jitter_test()`                | Optimization reliability assessment                              |
-| `retrospective_analysis()`     | Mohn's rho and retrospective bias patterns                       |
-| `profile_likelihood()`         | Likelihood-based confidence intervals                            |
-| `bayesian_fit()`               | Full posterior distributions via MCMC                            |
-| `posterior_predictive_check()` | Bayesian model validation                                        |
+| Function                         | Output                                                             |
+| -------------------------------- | ------------------------------------------------------------------ |
+| `plot_model_fit()`             | 4-panel: biomass, CPUE fit, residuals, harvest rate                |
+| `plot_residuals()`             | QQ plot, histogram, residuals vs fitted                            |
+| `plot_biomass()`               | Biomass trajectory with CI and B `<sub>`MSY `</sub>` reference |
+| `jitter_test()`                | Optimization reliability assessment                                |
+| `retrospective_analysis()`     | Mohn's rho and retrospective bias patterns                         |
+| `profile_likelihood()`         | Likelihood-based confidence intervals                              |
+| `bayesian_fit()`               | Full posterior distributions via MCMC                              |
+| `posterior_predictive_check()` | Bayesian model validation                                          |
 
 ## Mathematical Formulation
 
 The Pella-Tomlinson model is defined by:
 
-**Production function:**
-P(B) = r × B × (1 - (B/K)^(m-1)) / m
+**Production function (standard Pella-Tomlinson):**
+P(B) = r / (m - 1) × B × (1 - (B/K)^(m-1))
+
+with the Fox limit P(B) = r × B × log(K/B) as *m* → 1, and the Schaefer
+form P(B) = r × B × (1 - B/K) at *m* = 2. With this parameterisation *r*
+is the intrinsic growth rate (the maximum per-capita production rate as
+*B* → 0). Reference points are B_MSY = K·*m*^(-1/(m-1)), F_MSY = *r*/*m*,
+and MSY = F_MSY·B_MSY (Fox: K/e, *r*, rK/e).
 
 **State equation (deterministic default):**
 B[t+1] = B[t] + P(B[t]) - C[t]

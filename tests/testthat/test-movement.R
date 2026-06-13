@@ -44,8 +44,9 @@ test_that("gravity movement redistributes biomass and conserves total", {
   )
 
   start_vals <- list(
-    log_r = log(r), log_K = log(K), log_m = log(m), log_sigma_proc = log(0.2), log_sigma_obs = log(0.2),
-    log_q.A1 = log(q[1]), log_q.A2 = log(q[2]), log_B0.A1 = log(B0[1]), log_B0.A2 = log(B0[2])
+    log_r = log(r), log_m = log(m), log_sigma_proc = log(0.2), log_sigma_obs = log(0.2),
+    log_K.A1 = log(K / 2), log_K.A2 = log(K / 2),
+    log_q.A1 = log(q[1]), log_q.A2 = log(q[2]), log_d0 = log(1.0)
   )
 
   fit <- fit_pella_tomlinson_model(data_list, params_init = start_vals, options = list(validate_data = FALSE))

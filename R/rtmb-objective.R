@@ -27,8 +27,8 @@ NULL
 #' \code{RTMB::ADREPORT()} to report derived quantities (biomass trajectory,
 #' harvest rates, fitted CPUE, natural-scale parameters).
 #'
-#' Production function:
-#' \deqn{P(B) = r \cdot B \cdot \bigl(1 - (B/K)^{m-1}\bigr) / m}
+#' Production function (standard Pella-Tomlinson):
+#' \deqn{P(B) = \frac{r}{m-1} \cdot B \cdot \bigl(1 - (B/K)^{m-1}\bigr)}
 #'
 #' State equation (deterministic):
 #' \deqn{B_{t+1} = B_t + P(B_t) - C_t}
@@ -190,7 +190,10 @@ create_rtmb_objective <- function(data_env) {
         B_next <- RTMB::advector(numeric(n_areas))
         for (ia in seq_len(n_areas)) {
           Bt_ia <- B_spin[ia]
-          prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / m
+          # Standard Pella-Tomlinson production: P = r/(m-1) * B * (1 - (B/K)^(m-1)).
+        # The AD path cannot branch on m, so the Fox limit (m = 1) is not
+        # special-cased here; keep m bounded away from 1 when estimating it.
+        prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / (m - 1)
           B_det_ia <- Bt_ia + prod_ia
           B_det_ia <- 0.5 * (B_det_ia + sqrt(B_det_ia * B_det_ia + 4e-8)) + 1e-8
           B_next[ia] <- B_det_ia
@@ -200,8 +203,10 @@ create_rtmb_objective <- function(data_env) {
           B_move <- RTMB::advector(numeric(n_areas))
           for (ia in seq_len(n_areas)) {
             moved <- 0
+            # Inflow to area ia = sum over sources ib of the share moving
+            # FROM ib TO ia, i.e. Kmat[ib, ia] (conserves total biomass).
             for (ib in seq_len(n_areas)) {
-              moved <- moved + Kmat[ia, ib] * B_next[ib]
+              moved <- moved + Kmat[ib, ia] * B_next[ib]
             }
             B_move[ia] <- (1 - move_rate) * B_next[ia] + move_rate * moved
             B_move[ia] <- 0.5 * (B_move[ia] + sqrt(B_move[ia] * B_move[ia] + 4e-8)) + 1e-8
@@ -221,7 +226,10 @@ create_rtmb_objective <- function(data_env) {
       B_next <- RTMB::advector(numeric(n_areas))
       for (ia in seq_len(n_areas)) {
         Bt_ia <- B[[t]][ia]
-        prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / m
+        # Standard Pella-Tomlinson production: P = r/(m-1) * B * (1 - (B/K)^(m-1)).
+        # The AD path cannot branch on m, so the Fox limit (m = 1) is not
+        # special-cased here; keep m bounded away from 1 when estimating it.
+        prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / (m - 1)
         B_det_ia <- Bt_ia + prod_ia - catch_mat[t, ia]
         # Soft lower bound: RTMB cannot branch on AD types, so use
         # a differentiable approximation to max(x, eps).
@@ -267,8 +275,10 @@ create_rtmb_objective <- function(data_env) {
         Bt_new <- RTMB::advector(numeric(n_areas))
         for (ia in seq_len(n_areas)) {
           moved <- 0
+          # Inflow to area ia = sum over sources ib of the share moving
+          # FROM ib TO ia, i.e. Kmat[ib, ia] (conserves total biomass).
           for (ib in seq_len(n_areas)) {
-            moved <- moved + Kmat[ia, ib] * Bt_old[ib]
+            moved <- moved + Kmat[ib, ia] * Bt_old[ib]
           }
           Bt_new[ia] <- (1 - move_rate) * Bt_old[ia] + move_rate * moved
           # Differentiable lower bound (no if-branch on AD types)
@@ -507,10 +517,7 @@ create_simple_objective <- function(data, initial_params) {
     # Calculate biomass dynamics per area, with optional gravity movement
     for (t in 1:(n_years - 1)) {
       Bt <- B[t, ]
-      production <- ifelse(Bt > 0 & K_vec_s > 0 & m > 0,
-        r * Bt * (1 - (Bt / K_vec_s)^(m - 1)) / m,
-        0
-      )
+      production <- .pt_production(Bt, r, K_vec_s, m)
       # Guard against NaN/Inf from extreme parameter combinations
       production[!is.finite(production)] <- 0
       B_next <- Bt + production - catch_mat[t, ]
@@ -752,12 +759,12 @@ generate_starting_values <- function(data) {
 #' @return Production value (tonnes per year)
 #'
 #' @details
-#' Implements the Pella-Tomlinson production function:
-#' P(B) = r * B * (1 - (B/K)^(m-1)) / m
+#' Implements the standard Pella-Tomlinson production function:
+#' P(B) = r / (m - 1) * B * (1 - (B/K)^(m-1))
 #'
 #' Special cases:
-#' - m = 1: Fox model
-#' - m = 2: Schaefer model
+#' - m = 1: Fox model, P(B) = r * B * log(K/B)
+#' - m = 2: Schaefer model, P(B) = r * B * (1 - B/K)
 #'
 #' @examples
 #' \dontrun{
@@ -790,8 +797,8 @@ pella_tomlinson_production <- function(B, r, K, m) {
     return(0) # No production above carrying capacity
   }
 
-  # Pella-Tomlinson production function
-  production <- r * B * (1 - (B / K)^(m - 1)) / m
+  # Standard Pella-Tomlinson production function (with Fox limit at m = 1)
+  production <- .pt_production(B, r, K, m)
 
   return(production)
 }
