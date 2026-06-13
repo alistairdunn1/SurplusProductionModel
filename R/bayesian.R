@@ -187,7 +187,19 @@ bayesian_fit <- function(model_fit,
   lp_col <- which(colnames(log_mat) == "lp__")
   if (length(lp_col) > 0) log_mat <- log_mat[, -lp_col, drop = FALSE]
 
+  # When random effects are sampled (full Bayesian, laplace = FALSE) the SNUTS
+  # posterior includes the random-effect columns (e.g. proc_dev) alongside the
+  # fixed-effect scalar parameters. Retain only the fixed-effect columns that
+  # correspond to opt_par; the random effects are nuisance parameters and are
+  # excluded from the natural-scale transform and posterior summary.
+  fixed_cols <- which(colnames(log_mat) %in% par_names)
+  if (length(fixed_cols) > 0 && length(fixed_cols) < ncol(log_mat)) {
+    log_mat <- log_mat[, fixed_cols, drop = FALSE]
+  }
+
   # ---- transform to natural scale + derived quantities -------------------
+  # Derive names from the retained columns; their order need not match opt_par.
+  par_names <- colnames(log_mat)
   nat_names <- .log_to_natural_names(par_names)
   nat_mat <- exp(log_mat)
   colnames(nat_mat) <- nat_names
