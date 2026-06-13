@@ -15,7 +15,7 @@ A named list with elements:
 \item{sigma_proc}{Process error SD (0.05)}
 \item{sigma_obs_LL}{Longline observation error SD (0.20)}
 \item{sigma_obs_Trawl}{Trawl observation error SD (0.25)}
-\item{B0}{Initial biomass in tonnes (72000)}
+\item{B_initial}{Initial biomass in tonnes (72000)}
 }
 }
 \source{

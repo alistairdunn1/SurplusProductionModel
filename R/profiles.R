@@ -18,7 +18,7 @@ NULL
 #' @param parameters Character vector of parameter names to profile.
 #'   Supported names: \code{"r"}, \code{"K"}, \code{"m"}, \code{"sigma_obs"},
 #'   \code{"sigma_proc"}, \code{"MSY"}, \code{"BMSY"}, \code{"FMSY"}, and
-#'   per-area parameters such as \code{"q.A1"}, \code{"B0.A1"}.
+#'   per-area parameters such as \code{"q.A1"}, \code{"B_initial.A1"}.
 #'   Defaults to \code{c("r", "K", "MSY", "BMSY")}.
 #' @param ci_level Numeric, confidence level (default: 0.95).
 #' @param n_points Integer, number of grid points per side of the MLE
@@ -29,7 +29,7 @@ NULL
 #'   (default: 0.5, meaning +/- 50 percent of the MLE).
 #' @param biomass_target Optional numeric vector of target biomass fractions
 #'   used to add depletion-based derived quantities such as `"B_40%K"`
-#'   or `"F_40%B0"`.
+#'   or `"F_40%K"`.
 #' @param baseline Character string indicating which biomass baseline to use
 #'   for `biomass_target`: `"auto"` (default), `"B_initial"`, or `"K"`.
 #' @param verbose Logical, print progress messages (default: FALSE).
@@ -543,7 +543,7 @@ profile_likelihood <- function(model_fit,
 .naturalise_profile_parameters <- function(log_par) {
   nat_par <- exp(log_par)
   nat_names <- sub("^log_", "", names(log_par))
-  nat_names <- sub("^(q|B_initial|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat_names)
+  nat_names <- sub("^(q|K|B_initial|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat_names)
   names(nat_par) <- nat_names
   nat_par
 }

@@ -4,9 +4,9 @@
 fit_test_model <- function() {
   set.seed(42)
   years <- 2010:2018
-  true_r <- 0.3; true_K <- 5000; true_q <- 0.001; true_B0 <- 4000
+  true_r <- 0.3; true_K <- 5000; true_q <- 0.001; true_B_initial <- 4000
   biomass <- numeric(length(years))
-  biomass[1] <- true_B0
+  biomass[1] <- true_B_initial
   catch_vals <- rep(600, length(years))
   for (t in seq_len(length(years) - 1)) {
     prod <- true_r * biomass[t] * (1 - biomass[t] / true_K)

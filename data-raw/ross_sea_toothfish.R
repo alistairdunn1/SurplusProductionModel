@@ -18,7 +18,7 @@ true_params <- list(
   sigma_proc = 0.01, # Process error SD (low for demo identifiability)
   sigma_obs_LL = 0.15, # Observation error SD for longline CPUE
   sigma_obs_Trawl = 0.20, # Observation error SD for trawl survey CPUE
-  B0 = 72000 # Initial biomass (90% of K, pre-exploitation)
+  B_initial = 72000 # Initial biomass (90% of K, pre-exploitation)
 )
 
 # ===========================================================================
@@ -48,7 +48,7 @@ catch_trajectory <- c(
 # Simulate population dynamics
 # ===========================================================================
 biomass <- numeric(n_years)
-biomass[1] <- true_params$B0
+biomass[1] <- true_params$B_initial
 
 for (t in 1:(n_years - 1)) {
   # Pella-Tomlinson production

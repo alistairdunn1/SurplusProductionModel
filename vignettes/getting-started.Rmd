@@ -152,7 +152,7 @@ cat(sprintf("r          %10.4f  %10.4f\n", true$r,    getp("r")))
 cat(sprintf("K          %10.0f  %10.0f\n", true$K,    getp("K")))
 cat(sprintf("m          %10.2f  %10.2f\n", true$m,    getp("m")))
 cat(sprintf("q          %10.6f  %10.6f\n", true$q_LL, getp("q")))
-cat(sprintf("B_initial  %10.0f  %10.0f\n", true$B0,   getp("d0") * getp("K")))
+cat(sprintf("B_initial  %10.0f  %10.0f\n", true$B_initial,   getp("d0") * getp("K")))
 ```
 
 Note that exact recovery of the generating parameters is not expected from

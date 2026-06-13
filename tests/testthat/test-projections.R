@@ -8,7 +8,7 @@ make_projection_test_model <- function() {
     catch = catch,
     cpue = cpue,
     effort = catch / pmax(cpue, 1e-8),
-    parameters = c(r = 0.35, K = 6000, m = 2, q = 3e-4, sigma_proc = 0.15, sigma_obs = 0.25, B0 = 5000)
+    parameters = c(r = 0.35, K = 6000, m = 2, q = 3e-4, sigma_proc = 0.15, sigma_obs = 0.25, d0 = 5000 / 6000)
   )
 
   res <- SurplusProductionModel:::calculate_model_results(model$parameters, model$data)

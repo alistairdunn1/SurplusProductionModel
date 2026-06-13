@@ -3,7 +3,7 @@
 \alias{set_reference_point_defaults}
 \title{Set Package-Level Reference Point Defaults}
 \usage{
-set_reference_point_defaults(biomass_target = NULL, baseline = c("auto", "B0", "K"))
+set_reference_point_defaults(biomass_target = NULL, baseline = c("auto", "B_initial", "K"))
 }
 \arguments{
 \item{biomass_target}{Optional numeric vector of default biomass fractions
@@ -11,7 +11,7 @@ to use when a function call omits \code{biomass_target}. Pass
 \code{NULL} explicitly to clear the default.}
 
 \item{baseline}{Optional default biomass baseline, one of
-\code{"auto"}, \code{"B0"}, or \code{"K"}.}
+\code{"auto"}, \code{"B_initial"}, or \code{"K"}.}
 }
 \value{
 Invisibly returns the updated defaults as a named list.

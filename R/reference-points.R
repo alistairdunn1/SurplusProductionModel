@@ -160,7 +160,7 @@ get_reference_point_defaults <- function() {
 #'
 #' @param model_fit A fitted ProductionModel object (with fitted = TRUE)
 #' @param biomass_target Optional numeric vector of target biomass fractions.
-#'   For example, `0.4` requests `B_40%B0` and `F_40%B0` style reference
+#'   For example, `0.4` requests `B_40%K` and `F_40%K` style reference
 #'   points. If omitted, uses package default from
 #'   \code{get_reference_point_defaults()}.
 #' @param baseline Character string indicating which biomass baseline to use
@@ -493,7 +493,12 @@ resolve_reference_point_baseline <- function(parameters, baseline) {
 
 calculate_target_reference_points <- function(parameters, biomass_target, baseline_name, baseline_biomass) {
   r <- parameters[["r"]]
-  K <- parameters[["K"]]
+  # K may be a single "K" or per-area "K.<area>"; use the total.
+  K <- if ("K" %in% names(parameters)) {
+    parameters[["K"]]
+  } else {
+    sum(unname(parameters[grep("^K\\.", names(parameters))]))
+  }
   m <- parameters[["m"]]
 
   target_biomass <- biomass_target * baseline_biomass

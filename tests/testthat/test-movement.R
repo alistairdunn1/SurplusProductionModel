@@ -11,10 +11,10 @@ test_that("gravity movement redistributes biomass and conserves total", {
   decay <- 0.01
 
   # Simulate catch and CPUE
-  B0 <- c(A1 = 1000, A2 = 2000)
+  B_initial <- c(A1 = 1000, A2 = 2000)
   catch <- matrix(100, nY, nA, dimnames = list(year = years, area = areas))
   biomass <- matrix(NA_real_, nY, nA, dimnames = list(year = years, area = areas))
-  biomass[1, ] <- B0
+  biomass[1, ] <- B_initial
   r <- 0.3
   K <- 5000
   m <- 2

@@ -28,8 +28,8 @@ The function uses \code{RTMB::getAll()} to unpack parameters and
 \code{RTMB::ADREPORT()} to report derived quantities (biomass trajectory,
 harvest rates, fitted CPUE, natural-scale parameters).
 
-Production function:
-\deqn{P(B) = r \cdot B \cdot \bigl(1 - (B/K)^{m-1}\bigr) / m}
+Production function (standard Pella-Tomlinson):
+\deqn{P(B) = \frac{r}{m-1} \cdot B \cdot \bigl(1 - (B/K)^{m-1}\bigr)}
 
 State equation (deterministic):
 \deqn{B_{t+1} = B_t + P(B_t) - C_t}

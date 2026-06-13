@@ -124,10 +124,10 @@ true_r <- 0.3
 true_K <- 5000
 true_m <- 2.0  # Schaefer model
 true_q <- 0.001
-true_B0 <- 4000
+true_B_initial <- 4000
 catch <- rep(400, n_years)
 biomass <- numeric(n_years)
-biomass[1] <- true_B0
+biomass[1] <- true_B_initial
 for (t in 1:(n_years - 1)) {
   production <- true_r * biomass[t] * (1 - biomass[t] / true_K)
   biomass[t + 1] <- biomass[t] + production - catch[t]

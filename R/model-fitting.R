@@ -493,14 +493,20 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   fixed <- options$fixed_params
   map_list <- list()
   if (!is.null(fixed) && length(fixed) > 0) {
-    fix_names <- gsub("\\.", "_", names(fixed))
-    for (fn in fix_names) {
-      if (!fn %in% names(rtmb_parms)) {
-        stop("fixed_params name '", fn, "' not found in parameter list")
+    for (orig in names(fixed)) {
+      # RTMB parameter names use underscores (log_K_A1); fixed_params may be
+      # supplied with dot-separated area/label suffixes (log_K.A1).
+      fn <- gsub("\\.", "_", orig)
+      # Single-area fits store per-area names, so a bare "log_K"/"log_q" maps
+      # to its area-suffixed counterpart when there is exactly one area.
+      if (!fn %in% names(rtmb_parms) && n_areas == 1L) {
+        suffixed <- paste0(fn, "_", areas[1])
+        if (suffixed %in% names(rtmb_parms)) fn <- suffixed
       }
-      rtmb_parms[[fn]] <- unname(fixed[[gsub("_", ".", fn)]])
-      # If parameter is NA, try the underscore version
-      if (is.null(rtmb_parms[[fn]])) rtmb_parms[[fn]] <- unname(fixed[[fn]])
+      if (!fn %in% names(rtmb_parms)) {
+        stop("fixed_params name '", orig, "' not found in parameter list")
+      }
+      rtmb_parms[[fn]] <- unname(fixed[[orig]])
       map_list[[fn]] <- factor(NA)
     }
   }

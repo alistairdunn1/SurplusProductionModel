@@ -319,10 +319,10 @@ test_that("strong r priors influence the fitted r estimate", {
 
   set.seed(321)
   years <- 2010:2018
-  true_params <- list(r = 0.3, K = 6000, m = 2, q = 0.0012, B0 = 5000)
+  true_params <- list(r = 0.3, K = 6000, m = 2, q = 0.0012, B_initial = 5000)
 
   biomass <- numeric(length(years))
-  biomass[1] <- true_params$B0
+  biomass[1] <- true_params$B_initial
   catch <- rep(700, length(years))
   for (t in seq_len(length(years) - 1)) {
     production <- true_params$r * biomass[t] * (1 - biomass[t] / true_params$K) / true_params$m
@@ -366,7 +366,7 @@ test_that("strong r priors influence the fitted r estimate", {
   expect_equal(fit_high$results$priors[[1]]$param, "log_r")
 })
 
-test_that("B_initial prior alias maps to B0 parameter", {
+test_that("B_initial prior alias maps to initial-biomass parameter", {
   skip_if_not_installed("RTMB")
 
   years <- 2010:2016
@@ -389,7 +389,7 @@ test_that("B_initial prior alias maps to B0 parameter", {
   )
 
   prior_params <- vapply(fit_alias$results$priors, function(x) x$param, character(1))
-  expect_true(any(grepl("^log_B0", prior_params)))
+  expect_true(any(grepl("^log_B_initial", prior_params)))
   expect_true(any(grepl("^B_initial", names(fit_alias$parameters))))
 })
 
@@ -405,7 +405,7 @@ test_that("AR1 process structure captures positive autocorrelation better than I
     K = 6000,
     m = 2,
     q = 0.0014,
-    B0 = 5000,
+    B_initial = 5000,
     sigma_proc = 0.08,
     sigma_obs = 0.08,
     rho = 0.7,
@@ -422,7 +422,7 @@ test_that("AR1 process structure captures positive autocorrelation better than I
   }
 
   B <- numeric(n)
-  B[1] <- true$B0
+  B[1] <- true$B_initial
   catch <- rep(700, n)
   for (t in seq_len(n - 1)) {
     prod_t <- true$r * B[t] * (1 - B[t] / true$K) / true$m
@@ -453,7 +453,7 @@ test_that("AR1 process structure captures positive autocorrelation better than I
     log_sigma_proc = log(0.1),
     log_sigma_obs = log(0.1),
     log_q.A1 = log(0.0012),
-    log_B0.A1 = log(4500),
+    log_B_initial.A1 = log(4500),
     beta_temp = 0
   )
 
@@ -493,11 +493,11 @@ test_that("fit_pella_tomlinson_model integration test with simple data", {
   # Create simple synthetic data
   set.seed(123)
   years <- 2010:2015 # Short time series for fast testing
-  true_params <- list(r = 0.3, K = 5000, m = 2.0, q = 0.001, B0 = 4000)
+  true_params <- list(r = 0.3, K = 5000, m = 2.0, q = 0.001, B_initial = 4000)
 
   # Generate deterministic biomass trajectory
   biomass <- numeric(length(years))
-  biomass[1] <- true_params$B0
+  biomass[1] <- true_params$B_initial
   catch <- rep(800, length(years))
 
   for (t in 1:(length(years) - 1)) {

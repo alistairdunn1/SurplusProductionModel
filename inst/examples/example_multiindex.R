@@ -11,7 +11,7 @@ nL <- length(labels)
 r <- 0.25
 K <- 6000
 m <- 2
-B0 <- c(A1 = 3000, A2 = 3200)
+B_initial <- c(A1 = 3000, A2 = 3200)
 q_mat <- matrix(
   c(
     0.0004, 0.00025,
@@ -22,7 +22,7 @@ q_mat <- matrix(
 )
 
 B <- matrix(NA_real_, nY, nA, dimnames = list(year = years, area = areas))
-B[1, ] <- B0
+B[1, ] <- B_initial
 C <- matrix(0, nY, nA, dimnames = list(year = years, area = areas))
 C[, "A1"] <- 180
 C[, "A2"] <- 220

@@ -14,7 +14,7 @@ calculate_reference_points(
 \item{model_fit}{A fitted ProductionModel object (with fitted = TRUE)}
 
 \item{biomass_target}{Optional numeric vector of target biomass fractions.
-For example, \code{0.4} requests \verb{B_40\%B0} and \verb{F_40\%B0} style reference
+For example, \code{0.4} requests \verb{B_40\%K} and \verb{F_40\%K} style reference
 points. If omitted, uses package default from
 \code{get_reference_point_defaults()}.}
 
@@ -53,7 +53,7 @@ analytical depletion-based targets:
 
 B_x = x * B_base
 
-F_x = r / m * (1 - (B_x / K)^(m - 1))
+F_x = r / (m - 1) * (1 - (B_x / K)^(m - 1))
 
 where \code{B_base} is either fitted \code{B_initial} or \code{K}, depending on \code{baseline}.
 

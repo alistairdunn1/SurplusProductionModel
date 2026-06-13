@@ -25,7 +25,7 @@ Starting values are estimated using simple heuristics:
 \item q: Estimated from CPUE and biomass proxy relationship
 \item sigma_proc: Default moderate process error
 \item sigma_obs: Estimated from CPUE variability
-\item d0: Initial depletion multiplier (B0 = d0 x K)
+\item d0: Initial depletion multiplier (B_initial = d0 x K)
 }
 }
 \keyword{internal}

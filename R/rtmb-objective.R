@@ -629,7 +629,7 @@ create_simple_objective <- function(data, initial_params) {
 #' - q: Estimated from CPUE and biomass proxy relationship
 #' - sigma_proc: Default moderate process error
 #' - sigma_obs: Estimated from CPUE variability
-#' - d0: Initial depletion multiplier (B0 = d0 x K)
+#' - d0: Initial depletion multiplier (B_initial = d0 x K)
 #'
 #' @keywords internal
 generate_starting_values <- function(data) {

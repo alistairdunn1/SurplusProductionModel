@@ -22,13 +22,13 @@ Production value (tonnes per year)
 Calculate production at given biomass level using Pella-Tomlinson formulation.
 }
 \details{
-Implements the Pella-Tomlinson production function:
-P(B) = r * B * (1 - (B/K)^(m-1)) / m
+Implements the standard Pella-Tomlinson production function:
+P(B) = r / (m - 1) * B * (1 - (B/K)^(m-1))
 
 Special cases:
 \itemize{
-\item m = 1: Fox model
-\item m = 2: Schaefer model
+\item m = 1: Fox model, P(B) = r * B * log(K/B)
+\item m = 2: Schaefer model, P(B) = r * B * (1 - B/K)
 }
 }
 \examples{

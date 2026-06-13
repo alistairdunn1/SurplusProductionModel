@@ -43,7 +43,7 @@ utils::globalVariables(c(
 #'   Default: \code{FALSE} (full Bayesian).
 #' @param biomass_target Optional numeric vector of target biomass fractions
 #'   used to add depletion-based posterior summaries such as
-#'   `"B_40%K"` or `"F_40%B0"`.
+#'   `"B_40%K"` or `"F_40%K"`.
 #' @param baseline Character string indicating which biomass baseline to use
 #'   for `biomass_target`: `"auto"` (default), `"B_initial"`, or `"K"`.
 #' @param globals  Named list of objects to pass to parallel R sessions

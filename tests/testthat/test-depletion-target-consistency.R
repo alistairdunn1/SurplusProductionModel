@@ -7,10 +7,10 @@ fit_consistency_model <- function() {
   true_r <- 0.3
   true_K <- 5000
   true_q <- 0.001
-  true_B0 <- 4000
+  true_B_initial <- 4000
 
   biomass <- numeric(length(years))
-  biomass[1] <- true_B0
+  biomass[1] <- true_B_initial
   catch_vals <- rep(500, length(years))
   for (t in seq_len(length(years) - 1)) {
     prod <- true_r * biomass[t] * (1 - biomass[t] / true_K)
@@ -115,8 +115,8 @@ test_that("bayesian depletion targets match analytical helper per draw", {
     K = as.numeric(posterior[["K"]][i]),
     m = as.numeric(posterior[["m"]][i])
   )
-  if ("B0" %in% names(posterior) && is.finite(posterior[["B0"]][i])) {
-    params <- c(params, B0 = as.numeric(posterior[["B0"]][i]))
+  if ("B_initial" %in% names(posterior) && is.finite(posterior[["B_initial"]][i])) {
+    params <- c(params, B_initial = as.numeric(posterior[["B_initial"]][i]))
   }
 
   expected <- SurplusProductionModel:::calculate_reference_points_from_parameters(

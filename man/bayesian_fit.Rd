@@ -50,7 +50,7 @@ Default: \code{FALSE} (full Bayesian).}
 
 \item{biomass_target}{Optional numeric vector of target biomass fractions
 used to add depletion-based posterior summaries such as
-\code{"B_40\%K"} or \code{"F_40\%B0"}.}
+\code{"B_40\%K"} or \code{"F_40\%K"}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
 for \code{biomass_target}: \code{"auto"} (default), \code{"B_initial"}, or \code{"K"}.}

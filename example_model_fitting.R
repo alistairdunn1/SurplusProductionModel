@@ -13,11 +13,11 @@ true_r <- 0.3
 true_K <- 5000
 true_m <- 2.0 # Schaefer model
 true_q <- 0.001
-true_B0 <- 4000
+true_B_initial <- 4000
 
 # Generate deterministic biomass trajectory
 true_biomass <- numeric(n_years)
-true_biomass[1] <- true_B0
+true_biomass[1] <- true_B_initial
 catch_data <- rep(800, n_years) # Constant catch
 
 for (t in 1:(n_years - 1)) {

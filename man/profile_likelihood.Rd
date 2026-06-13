@@ -22,7 +22,7 @@ profile_likelihood(
 \item{parameters}{Character vector of parameter names to profile.
 Supported names: \code{"r"}, \code{"K"}, \code{"m"}, \code{"sigma_obs"},
 \code{"sigma_proc"}, \code{"MSY"}, \code{"BMSY"}, \code{"FMSY"}, and
-per-area parameters such as \code{"q.A1"}, \code{"B0.A1"}.
+per-area parameters such as \code{"q.A1"}, \code{"B_initial.A1"}.
 Defaults to \code{c("r", "K", "MSY", "BMSY")}.}
 
 \item{ci_level}{Numeric, confidence level (default: 0.95).}
@@ -38,7 +38,7 @@ from the MLE to extend the profiling grid (default: 3).}
 
 \item{biomass_target}{Optional numeric vector of target biomass fractions
 used to add depletion-based derived quantities such as \code{"B_40\%K"}
-or \code{"F_40\%B0"}.}
+or \code{"F_40\%K"}.}
 
 \item{baseline}{Character string indicating which biomass baseline to use
 for \code{biomass_target}: \code{"auto"} (default), \code{"B_initial"}, or \code{"K"}.}

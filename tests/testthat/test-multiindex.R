@@ -13,7 +13,7 @@ test_that("multi-index multi-area fit runs and produces plausible outputs", {
   r <- 0.3
   K <- 5000
   m <- 2
-  B0 <- c(A1 = 3000, A2 = 3500)
+  B_initial <- c(A1 = 3000, A2 = 3500)
   q_true <- matrix(
     c(
       0.0004, 0.00025,
@@ -25,7 +25,7 @@ test_that("multi-index multi-area fit runs and produces plausible outputs", {
 
   # Simulate biomass per area (deterministic Schaefer dynamics)
   B <- matrix(NA_real_, nY, nA, dimnames = list(year = years, area = areas))
-  B[1, ] <- B0
+  B[1, ] <- B_initial
   C <- matrix(0, nY, nA, dimnames = list(year = years, area = areas))
   C[, "A1"] <- 200
   C[, "A2"] <- 240
@@ -56,13 +56,13 @@ test_that("multi-index multi-area fit runs and produces plausible outputs", {
 
   data_list <- list(cpue_data = cpue_df, catch_data = catch_df)
 
-  # Starting values (let generator build per-index q and per-area B0)
+  # Starting values (let generator build per-index q and scalar d0)
   processed <- SurplusProductionModel:::preprocess_model_data(cpue_df, catch_df)
   start_vals <- SurplusProductionModel:::generate_starting_values(processed)
 
-  # Ensure required names exist for per-index q
+  # Ensure required names exist for per-index q and the initial-depletion d0
   expect_true(all(paste0("log_q.", rep(areas, each = nL), ".", rep(labels, times = nA)) %in% names(start_vals)))
-  expect_true(all(paste0("log_B0.", areas) %in% names(start_vals)))
+  expect_true("log_d0" %in% names(start_vals))
 
   # Fit
   fit <- fit_pella_tomlinson_model(data_list, params_init = start_vals, options = list(control = list(iter.max = 200, eval.max = 400), validate_data = FALSE))
