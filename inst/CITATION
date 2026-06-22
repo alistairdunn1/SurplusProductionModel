@@ -1,0 +1,19 @@
+citHeader("To cite the SurplusProductionModel package in publications use:")
+
+ver  <- meta$Version
+year <- format(Sys.Date(), "%Y")
+
+bibentry(
+  bibtype     = "Manual",
+  title       = "SurplusProductionModel: Pella-Tomlinson Surplus Production Model",
+  author      = person("Alistair", "Dunn"),
+  year        = year,
+  note        = paste("R package version", ver),
+  url         = "https://github.com/alistairdunn1/SurplusProductionModel",
+  textVersion = paste0(
+    "Dunn, A. (", year, "). ",
+    "SurplusProductionModel: Pella-Tomlinson Surplus Production Model. ",
+    "R package version ", ver, ". ",
+    "https://github.com/alistairdunn1/SurplusProductionModel"
+  )
+)
