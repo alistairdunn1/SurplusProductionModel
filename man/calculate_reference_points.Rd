@@ -40,13 +40,15 @@ Calculates biological reference points (MSY, BMSY, FMSY) from a fitted
 Pella-Tomlinson surplus production model.
 }
 \details{
-Reference points are calculated using the Pella-Tomlinson formulation:
+Reference points are calculated using the Pella-Tomlinson formulation
+(the single implementation in
+\code{\link{pella_tomlinson_reference_points}}):
 
-MSY = r * K * (m-1)^((m-1)/m) / m
+BMSY = K * m^(-1/(m-1))
 
-BMSY = K * (m-1)^(1/m) / m
+FMSY = r / m
 
-FMSY = MSY / BMSY
+MSY = FMSY * BMSY
 
 For user-defined biomass fractions \code{x}, the function also calculates
 analytical depletion-based targets:

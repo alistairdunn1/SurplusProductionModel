@@ -4,9 +4,17 @@
 \alias{.posterior_summary}
 \title{Posterior summary table}
 \usage{
-.posterior_summary(mat)
+.posterior_summary(mat, chain_id = NULL)
+}
+\arguments{
+\item{mat}{Matrix of posterior draws (rows = draws, columns = quantities).}
+
+\item{chain_id}{Optional integer vector of chain identifiers, one per row of
+\code{mat}. When \code{NULL} or a single chain, between-chain diagnostics
+are returned as \code{NA}.}
 }
 \description{
-Posterior summary table
+Includes rank-normalised split-Rhat and bulk effective sample size
+(Vehtari et al. 2021) when per-draw chain identifiers are supplied.
 }
 \keyword{internal}

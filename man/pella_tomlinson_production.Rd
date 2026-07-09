@@ -9,7 +9,9 @@ pella_tomlinson_production(B, r, K, m)
 \arguments{
 \item{B}{Biomass level (tonnes)}
 
-\item{r}{Intrinsic growth rate (per year)}
+\item{r}{Productivity parameter (per year). The per-capita growth rate as
+\code{B} approaches zero is \code{r / (m - 1)} and \code{FMSY = r / m};
+\code{r} is the classical intrinsic growth rate only when \code{m = 2}.}
 
 \item{K}{Carrying capacity (tonnes)}
 

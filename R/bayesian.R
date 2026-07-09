@@ -201,7 +201,15 @@ bayesian_fit <- function(model_fit,
   # Derive names from the retained columns; their order need not match opt_par.
   par_names <- colnames(log_mat)
   nat_names <- .log_to_natural_names(par_names)
-  nat_mat <- exp(log_mat)
+  # Transform each column from its estimation scale to the natural scale. Most
+  # parameters are on the log scale, but movement_rate is on the logit scale
+  # (log_movement_rate = qlogis(movement_rate)) and the AR(1) coefficient is on
+  # the atanh scale (theta_rho = atanh(rho)); these need the matching inverse
+  # transforms rather than exp().
+  nat_mat <- log_mat
+  for (j in seq_along(par_names)) {
+    nat_mat[, j] <- .natural_scale_value(par_names[j], log_mat[, j])
+  }
   colnames(nat_mat) <- nat_names
 
   # Derived quantities: MSY, BMSY, FMSY
@@ -247,8 +255,30 @@ bayesian_fit <- function(model_fit,
     target_metadata <- target_spec$targets
   }
 
+  # ---- chain identifiers for convergence diagnostics ---------------------
+  # Draws in full_mat are row-aligned with the SNUTS sampler output; recover
+  # the per-draw chain index so split-Rhat and bulk-ESS can be computed.
+  chain_id <- tryCatch(
+    {
+      sp <- SparseNUTS::extract_sampler_params(snuts_fit)
+      if (!is.null(sp) && "chain" %in% names(sp) && nrow(sp) == nrow(full_mat)) {
+        as.integer(sp$chain)
+      } else {
+        NULL
+      }
+    },
+    error = function(e) NULL
+  )
+  if (is.null(chain_id)) {
+    # Fall back to an even split across the requested number of chains.
+    n_draws_total <- nrow(full_mat)
+    n_ch <- max(1L, as.integer(chains))
+    per <- ceiling(n_draws_total / n_ch)
+    chain_id <- rep(seq_len(n_ch), each = per)[seq_len(n_draws_total)]
+  }
+
   # ---- posterior summary -------------------------------------------------
-  summary_df <- .posterior_summary(full_mat)
+  summary_df <- .posterior_summary(full_mat, chain_id)
 
   # ---- build output object -----------------------------------------------
   out <- list(
@@ -276,17 +306,53 @@ bayesian_fit <- function(model_fit,
 #' Map log-scale parameter names to natural-scale names
 #' @keywords internal
 .log_to_natural_names <- function(par_names) {
-  nat <- sub("^log_", "", par_names)
+  # Estimation-scale parameters that are not simple log transforms.
+  nat <- ifelse(par_names == "log_movement_rate", "movement_rate",
+    ifelse(par_names == "theta_rho", "rho", sub("^log_", "", par_names))
+  )
   # Convert underscore area/label suffixes to dots: q_A1 -> q.A1, K_A1 -> K.A1
   nat <- sub("^(q|K|B_initial|sigma_proc|sigma_obs)_([A-Z])", "\\1.\\2", nat)
   nat
 }
 
 
-#' Posterior summary table
+#' Transform a draw (or vector of draws) from the estimation scale to the
+#' natural scale, honouring each parameter's link function.
+#'
+#' Most parameters use a log link, but \code{log_movement_rate} uses a logit
+#' link (\code{movement_rate = plogis(theta)}) and \code{theta_rho} uses an
+#' atanh link (\code{rho = tanh(theta)}). Mirrors
+#' \code{transform_parameters_to_natural} for the MCMC draws.
+#'
+#' @param name Estimation-scale parameter name.
+#' @param x Numeric draw(s) on the estimation scale.
 #' @keywords internal
-.posterior_summary <- function(mat) {
+.natural_scale_value <- function(name, x) {
+  if (identical(name, "log_movement_rate")) {
+    stats::plogis(x)
+  } else if (identical(name, "theta_rho")) {
+    tanh(x)
+  } else if (grepl("^log_", name)) {
+    exp(x)
+  } else {
+    x
+  }
+}
+
+
+#' Posterior summary table
+#'
+#' Includes rank-normalised split-Rhat and bulk effective sample size
+#' (Vehtari et al. 2021) when per-draw chain identifiers are supplied.
+#'
+#' @param mat Matrix of posterior draws (rows = draws, columns = quantities).
+#' @param chain_id Optional integer vector of chain identifiers, one per row of
+#'   \code{mat}. When \code{NULL} or a single chain, between-chain diagnostics
+#'   are returned as \code{NA}.
+#' @keywords internal
+.posterior_summary <- function(mat, chain_id = NULL) {
   qs <- apply(mat, 2, quantile, probs = c(0.025, 0.50, 0.975), na.rm = TRUE)
+  diag <- .mcmc_diagnostics(mat, chain_id)
   data.frame(
     parameter = colnames(mat),
     mean = colMeans(mat, na.rm = TRUE),
@@ -294,11 +360,152 @@ bayesian_fit <- function(model_fit,
     `2.5%` = qs["2.5%", ],
     `50%` = qs["50%", ],
     `97.5%` = qs["97.5%", ],
-    n_eff = .simple_ess(mat),
+    n_eff = diag$ess_bulk,
+    Rhat = diag$rhat,
     row.names = NULL,
     check.names = FALSE,
     stringsAsFactors = FALSE
   )
+}
+
+
+#' MCMC convergence diagnostics (rank-normalised split-Rhat and bulk ESS)
+#'
+#' Computes, per column of \code{mat}, the rank-normalised split-Rhat and the
+#' bulk effective sample size following Vehtari et al. (2021). When chain
+#' structure is unavailable (single chain, or unequal/short chains) Rhat is
+#' returned as \code{NA} and a pooled autocorrelation ESS is used as a
+#' fallback.
+#'
+#' @param mat Matrix of draws (rows = draws, cols = quantities).
+#' @param chain_id Integer vector of chain identifiers, one per row.
+#' @return List with numeric vectors \code{rhat} and \code{ess_bulk}.
+#' @keywords internal
+.mcmc_diagnostics <- function(mat, chain_id = NULL) {
+  n_col <- ncol(mat)
+  rhat <- rep(NA_real_, n_col)
+  ess_bulk <- rep(NA_real_, n_col)
+
+  usable <- !is.null(chain_id) && length(chain_id) == nrow(mat) &&
+    length(unique(chain_id)) >= 2L
+  if (usable) {
+    split_lengths <- tapply(seq_along(chain_id), chain_id, length)
+    n_per <- min(split_lengths)
+    usable <- is.finite(n_per) && n_per >= 4L
+  }
+
+  if (!usable) {
+    # Fallback: pooled autocorrelation-based ESS, no between-chain Rhat.
+    ess_bulk <- .simple_ess(mat)
+    return(list(rhat = rhat, ess_bulk = ess_bulk))
+  }
+
+  chains <- sort(unique(chain_id))
+  for (j in seq_len(n_col)) {
+    # Assemble an [iterations x chains] matrix, truncated to the common length.
+    draws <- vapply(chains, function(cc) {
+      x <- mat[chain_id == cc, j]
+      x[seq_len(n_per)]
+    }, numeric(n_per))
+    if (!is.matrix(draws)) draws <- matrix(draws, nrow = n_per)
+
+    if (any(!is.finite(draws))) {
+      next
+    }
+    # Bulk diagnostics operate on rank-normalised draws.
+    ranks <- .rank_normalise(as.numeric(draws))
+    z <- matrix(ranks, nrow = n_per)
+
+    rhat[j] <- .split_rhat(z)
+    ess_bulk[j] <- .ess_multichain(z)
+  }
+
+  list(rhat = rhat, ess_bulk = ess_bulk)
+}
+
+
+#' Rank-normalise a numeric vector (Blom transform)
+#' @keywords internal
+.rank_normalise <- function(x) {
+  n <- length(x)
+  r <- rank(x, ties.method = "average")
+  stats::qnorm((r - 0.375) / (n + 0.25))
+}
+
+
+#' Split-Rhat from an [iterations x chains] matrix
+#' @keywords internal
+.split_rhat <- function(z) {
+  n <- nrow(z)
+  m <- ncol(z)
+  half <- floor(n / 2)
+  if (half < 2L) {
+    return(NA_real_)
+  }
+  # Split each chain in half -> 2m sub-chains of length `half`.
+  splits <- cbind(z[seq_len(half), , drop = FALSE], z[(n - half + 1L):n, , drop = FALSE])
+  chain_means <- colMeans(splits)
+  chain_vars <- apply(splits, 2, stats::var)
+  w <- mean(chain_vars)
+  b <- half * stats::var(chain_means)
+  if (!is.finite(w) || w <= 0) {
+    return(NA_real_)
+  }
+  var_plus <- ((half - 1) * w + b) / half
+  sqrt(var_plus / w)
+}
+
+
+#' Bulk effective sample size from an [iterations x chains] matrix
+#'
+#' Uses the multi-chain autocovariance estimator with Geyer's initial
+#' monotone positive sequence truncation (Vehtari et al. 2021).
+#' @keywords internal
+.ess_multichain <- function(z) {
+  n <- nrow(z)
+  m <- ncol(z)
+  if (n < 4L) {
+    return(NA_real_)
+  }
+
+  chain_means <- colMeans(z)
+  chain_vars <- apply(z, 2, stats::var)
+  w <- mean(chain_vars)
+  if (!is.finite(w) || w <= 0) {
+    return(NA_real_)
+  }
+  b <- n * stats::var(chain_means)
+  var_plus <- ((n - 1) * w + b) / n
+
+  # Mean (over chains) autocorrelation at each lag via each chain's acf.
+  max_lag <- n - 1L
+  acov <- matrix(0, nrow = max_lag + 1L, ncol = m)
+  for (cc in seq_len(m)) {
+    a <- stats::acf(z[, cc], lag.max = max_lag, plot = FALSE, demean = TRUE)$acf[, 1, 1]
+    # Convert autocorrelation to autocovariance using the chain variance.
+    acov[seq_along(a), cc] <- a * chain_vars[cc]
+  }
+  mean_acov <- rowMeans(acov)
+  rho <- 1 - (w - mean_acov[-1]) / var_plus # rho_t for t = 1..max_lag
+
+  # Geyer initial positive/monotone sequence on paired lags.
+  rho_sum <- 0
+  t <- 1L
+  prev_pair <- Inf
+  while (t + 1L <= length(rho)) {
+    pair <- rho[t] + rho[t + 1L]
+    if (pair < 0) break
+    pair <- min(pair, prev_pair) # enforce monotone non-increasing
+    rho_sum <- rho_sum + pair
+    prev_pair <- pair
+    t <- t + 2L
+  }
+
+  tau <- 1 + 2 * rho_sum
+  if (!is.finite(tau) || tau <= 0) {
+    return(NA_real_)
+  }
+  (n * m) / tau
 }
 
 
@@ -587,11 +794,12 @@ plot.bayes_fit <- function(x, type = c("trace", "density", "pairs", "histogram")
     for (p in pars) {
       nat_idx <- match(p, nat_par_names)
       if (!is.na(nat_idx)) {
-        # Direct model parameter — exp-transform the log-scale samples
+        # Direct model parameter — transform the estimation-scale samples using
+        # the parameter's link (log, logit for movement_rate, atanh for rho).
         log_name <- log_par_names[nat_idx]
         samp_idx <- match(log_name, colnames(log_samp))
         if (is.na(samp_idx)) next
-        vals <- exp(log_samp[, samp_idx])
+        vals <- .natural_scale_value(log_name, log_samp[, samp_idx])
       } else if (p %in% c("MSY", "BMSY", "FMSY")) {
         # Derived reference points — compute from sampled parameters
         r_col <- match(grep("^log_r(\\.|$)", colnames(log_samp), value = TRUE)[1], colnames(log_samp))
@@ -707,8 +915,9 @@ posterior_predictive_check <- function(bayes_fit, n_sims = 200L, seed = NULL) {
   if (is.null(obs_cpue)) {
     stop("Observed CPUE must be present in model_fit$data$cpue for posterior predictive checks")
   }
-  obs_flat <- as.numeric(obs_cpue)
-  obs_flat <- obs_flat[!is.na(obs_flat)]
+  obs_all <- as.numeric(obs_cpue)
+  obs_keep <- which(!is.na(obs_all))
+  obs_flat <- obs_all[obs_keep]
   n_obs <- length(obs_flat)
 
   # Subsample draws
@@ -718,33 +927,53 @@ posterior_predictive_check <- function(bayes_fit, n_sims = 200L, seed = NULL) {
   # Get parameter column names
   nat_names <- colnames(posterior)
 
-  # For each draw, simulate CPUE
+  # Rebuild a data list that exposes movement inputs at the top level so the
+  # per-draw recomputation reproduces the fitted dynamics (including movement).
+  recompute_data <- model_fit$data
+  if (!is.null(model_fit$data$movement)) {
+    mv <- model_fit$data$movement
+    recompute_data$distance_matrix <- mv$distance_matrix
+    recompute_data$attractiveness <- mv$attractiveness
+    recompute_data$decay <- mv$decay
+    recompute_data$movement_rate <- mv$movement_rate
+  }
+
+  # Parameters to vary by draw: the natural-scale model parameters present in
+  # both the MLE fit and the posterior (correctly back-transformed, including
+  # movement_rate on the logit scale and rho on the atanh scale).
+  mle_par <- model_fit$parameters
+  varying <- intersect(names(mle_par), nat_names)
+
+  # For each draw, recompute the biomass/CPUE trajectory from that draw's
+  # parameters (propagating parameter uncertainty), then add observation error.
   sim_mat <- matrix(NA_real_, nrow = length(draw_idx), ncol = n_obs)
 
   for (i in seq_along(draw_idx)) {
     d <- draw_idx[i]
 
-    # Extract parameters for this draw
+    # Per-draw parameter vector: start from the MLE (to supply any fixed or
+    # non-sampled parameters) and overwrite with this posterior draw.
+    par_d <- mle_par
+    par_d[varying] <- posterior[d, varying]
+
     sigma_obs <- .extract_draw_param(posterior, d, "sigma_obs", nat_names)
     if (is.na(sigma_obs)) {
-      stop("Parameter 'sigma_obs' is missing from the posterior draws")
+      sigma_obs <- unname(mle_par[["sigma_obs"]])
     }
 
-    # Get fitted CPUE from the model
-    # (using the model's fitted CPUE as the expected value;
-    #  for a full PPC we would re-run the dynamics, but this is
-    #  computationally expensive and the observation-error PPC
-    #  is the standard quick check)
-    fitted_cpue <- as.numeric(model_fit$results$fitted_cpue)
-    fitted_cpue <- fitted_cpue[!is.na(fitted_cpue)]
+    res_d <- tryCatch(
+      calculate_model_results(par_d, recompute_data),
+      error = function(e) NULL
+    )
+    if (is.null(res_d)) next
 
-    if (length(fitted_cpue) != n_obs) {
-      # If lengths don't match, skip
-      next
-    }
+    fit_all <- as.numeric(res_d$fitted_cpue)
+    if (length(fit_all) < max(obs_keep)) next
+    fit_flat <- fit_all[obs_keep]
 
-    # Simulate observations: log-normal observation error
-    sim_mat[i, ] <- fitted_cpue * exp(rnorm(n_obs, 0, sigma_obs))
+    # Simulate observations: log-normal observation error around the draw's
+    # own fitted CPUE.
+    sim_mat[i, ] <- fit_flat * exp(rnorm(n_obs, 0, sigma_obs))
   }
 
   # Bayesian p-value: compare mean of replicated vs observed

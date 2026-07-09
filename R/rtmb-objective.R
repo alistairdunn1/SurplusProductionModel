@@ -107,7 +107,10 @@ create_rtmb_objective <- function(data_env) {
       } else {
         stop("Missing carrying-capacity parameter for area ", areas[ia])
       }
-      B_initial_vec[ia] <- d0 * K_vec[ia]
+      # Spin-up starts from the undepleted per-area carrying capacity; initial
+      # depletion d0 is applied after the unfished (movement) equilibrium is
+      # resolved, so d0 is not erased by the spin-up.
+      B_initial_vec[ia] <- K_vec[ia]
     }
 
     # q – may be per-area or per-area-label
@@ -180,12 +183,17 @@ create_rtmb_objective <- function(data_env) {
     # Use a list-of-vectors to store biomass (avoids matrix ops that strip
     # RTMB AD class attributes).  B[[t]][ia] = biomass in year t, area ia.
     B <- vector("list", n_years)
-    B[[1]] <- B_initial_vec
 
-    # Deterministic pre-data spin-up with zero catch to relax initial
-    # conditions toward equilibrium before fitting observation years.
+    # Resolve the unfished spatial equilibrium, then apply initial depletion.
+    # With movement the joint zero-catch equilibrium differs from the per-area
+    # carrying capacities because biomass is redistributed between areas; the
+    # deterministic spin-up (from K, zero catch) converges to that equilibrium.
+    # Without movement each area sits at its own K and the spin-up is a no-op.
+    # Initial depletion d0 is applied as a multiplier afterwards, so the spin-up
+    # resolves the movement/unfished level while d0 sets depletion.
+    B_unfished_vec <- B_initial_vec
     if (spinup_years > 0) {
-      B_spin <- B[[1]]
+      B_spin <- B_initial_vec
       for (s in seq_len(spinup_years)) {
         B_next <- RTMB::advector(numeric(n_areas))
         for (ia in seq_len(n_areas)) {
@@ -216,8 +224,9 @@ create_rtmb_objective <- function(data_env) {
           B_spin <- B_next
         }
       }
-      B[[1]] <- B_spin
+      B_unfished_vec <- B_spin
     }
+    B[[1]] <- d0 * B_unfished_vec
 
     nll <- 0
 
@@ -264,28 +273,29 @@ create_rtmb_objective <- function(data_env) {
           }
         }
       }
-      B[[t + 1]] <- B_next
-    }
 
-    # Apply gravity movement (if present) --- deterministic redistribution
-    if (has_movement_inputs) {
-      # Redistribute biomass for years 2..n_years
-      for (t in 2:n_years) {
-        Bt_old <- B[[t]]
-        Bt_new <- RTMB::advector(numeric(n_areas))
+      # Apply gravity movement within the annual step so the redistributed
+      # biomass becomes the state that enters the next year's production and
+      # is seen by the observation model. This couples areas over time
+      # (a genuine movement process), rather than reshaping a trajectory that
+      # already evolved independently by area.
+      if (has_movement_inputs) {
+        B_moved <- RTMB::advector(numeric(n_areas))
         for (ia in seq_len(n_areas)) {
           moved <- 0
           # Inflow to area ia = sum over sources ib of the share moving
           # FROM ib TO ia, i.e. Kmat[ib, ia] (conserves total biomass).
           for (ib in seq_len(n_areas)) {
-            moved <- moved + Kmat[ib, ia] * Bt_old[ib]
+            moved <- moved + Kmat[ib, ia] * B_next[ib]
           }
-          Bt_new[ia] <- (1 - move_rate) * Bt_old[ia] + move_rate * moved
+          B_moved[ia] <- (1 - move_rate) * B_next[ia] + move_rate * moved
           # Differentiable lower bound (no if-branch on AD types)
-          Bt_new[ia] <- 0.5 * (Bt_new[ia] + sqrt(Bt_new[ia] * Bt_new[ia] + 4e-8)) + 1e-8
+          B_moved[ia] <- 0.5 * (B_moved[ia] + sqrt(B_moved[ia] * B_moved[ia] + 4e-8)) + 1e-8
         }
-        B[[t]] <- Bt_new
+        B_next <- B_moved
       }
+
+      B[[t + 1]] <- B_next
     }
 
     # ---- Observation likelihood (lognormal CPUE) ----
@@ -331,6 +341,9 @@ create_rtmb_objective <- function(data_env) {
     RTMB::ADREPORT(B_mat)
     RTMB::ADREPORT(r)
     RTMB::ADREPORT(K_vec)
+    # Unfished spatial equilibrium (status baseline). Under movement this is the
+    # joint redistributed equilibrium and differs from the per-area K.
+    RTMB::ADREPORT(B_unfished_vec)
     RTMB::ADREPORT(m)
     RTMB::ADREPORT(sigma_obs)
     if (has_proc) RTMB::ADREPORT(sigma_proc)
@@ -597,7 +610,8 @@ create_simple_objective <- function(data, initial_params) {
 
     # Parameter bounds penalties (globals)
     if (!is.finite(r) || r <= 0 || r > 2) nll <- nll + 1000
-    if (!is.finite(K) || K <= 0 || K > 1e9) nll <- nll + 1000
+    bad_K <- !is.finite(K_vec_s) | K_vec_s <= 0 | K_vec_s > 1e9
+    if (any(bad_K)) nll <- nll + 1000 * sum(bad_K)
     if (!is.finite(m) || m <= 0 || m > 10) nll <- nll + 1000
     if (!is.finite(sigma_obs) || sigma_obs <= 0 || sigma_obs > 2) nll <- nll + 1000
     # Per-area/label bounds (NA-safe)
@@ -752,7 +766,9 @@ generate_starting_values <- function(data) {
 #' Calculate production at given biomass level using Pella-Tomlinson formulation.
 #'
 #' @param B Biomass level (tonnes)
-#' @param r Intrinsic growth rate (per year)
+#' @param r Productivity parameter (per year). The per-capita growth rate as
+#'   \code{B} approaches zero is \code{r / (m - 1)} and \code{FMSY = r / m};
+#'   \code{r} is the classical intrinsic growth rate only when \code{m = 2}.
 #' @param K Carrying capacity (tonnes)
 #' @param m Shape parameter (dimensionless)
 #'

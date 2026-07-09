@@ -90,8 +90,16 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
 #'       If NULL, the fitter uses \code{data$movement$movement_rate} when
 #'       provided, otherwise 0.12. Must lie in \code{(0, 1)}.}
 #'     \item{spinup_years}{Non-negative integer number of deterministic
-#'       pre-data years (zero catch) used to spin up biomass before the first
-#'       observation year (default: 50).}
+#'       pre-data years (zero catch) used to resolve the unfished equilibrium
+#'       before the first observation year (default: 0, or 50 when movement
+#'       inputs are supplied). The spin-up starts from the per-area carrying
+#'       capacities and, when movement is present, converges to the joint
+#'       (redistributed) unfished spatial equilibrium, which differs from the
+#'       per-area \code{K}. Initial depletion \code{d0} is applied as a
+#'       multiplier to that equilibrium, so the spin-up resolves the
+#'       movement/unfished level while \code{d0} sets depletion; the two are
+#'       complementary. Without movement the spin-up is a no-op (each area sits
+#'       at its own \code{K}) and \code{d0} is applied directly to \code{K}.}
 #'     \item{n_starts}{Integer, number of random restarts (default: 1).
 #'       When > 1, the optimizer is run from \code{n_starts} different
 #'       starting vectors (the original plus jittered versions) and the
@@ -131,6 +139,18 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
 #'
 #' In both modes, parameters are log-transformed where needed to enforce
 #' positivity constraints.
+#'
+#' The reported \code{aic} and \code{bic} use the optimised objective and the
+#' number of estimated fixed parameters. When \code{process_noise = TRUE} the
+#' objective is the Laplace-marginal negative log-likelihood, so these are
+#' marginal information criteria and carry the usual conditional-AIC caveats
+#' for mixed models (\code{results$ic_type} records which form applies).
+#'
+#' Carrying capacity \code{K}, catchability \code{q}, and initial depletion
+#' \code{d0} are jointly only weakly identified from a single relative CPUE
+#' index without a strong one-way-trip contrast. Supplying informative priors
+#' (see the \code{priors} option) on one or more of these, or fixing \code{d0},
+#' is recommended when the index is uninformative about absolute scale.
 #'
 #' @references Pella, J. J.; Tomlinson, P. K. (1969). A generalised stock production model. Inter-American Tropical Tuna Commission Bulletin 13, 419-496.
 #'
@@ -175,7 +195,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     env_scale = TRUE,
     estimate_movement_rate = FALSE,
     movement_rate_start = NULL,
-    spinup_years = 50L,
+    spinup_years = 0L,
     area_k_shares = NULL,
     priors = NULL,
     calculate_se = TRUE
@@ -302,6 +322,23 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   has_movement_inputs <- !is.null(processed_data$distance_matrix) &&
     !is.null(processed_data$attractiveness) &&
     !is.null(processed_data$decay)
+
+  # The spin-up resolves the unfished spatial equilibrium, which under movement
+  # differs from the per-area carrying capacities (biomass is redistributed
+  # between areas). Initial depletion d0 is applied to that equilibrium, so the
+  # spin-up and d0 are complementary rather than in conflict. When movement is
+  # present but no spin-up was requested, enable a default spin-up so the
+  # equilibrium (and hence status baseline) is well defined.
+  if (has_movement_inputs && spinup_years == 0L) {
+    spinup_years <- 50L
+    if (isTRUE(options$show_starting_values_message)) {
+      message(
+        "Movement inputs supplied: using a 50-year zero-catch spin-up to ",
+        "resolve the unfished spatial equilibrium (initial depletion d0 is ",
+        "applied to that equilibrium)."
+      )
+    }
+  }
 
   if (estimate_movement_rate && !has_movement_inputs) {
     stop(
@@ -688,6 +725,11 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     std_errors = std_errors,
     biomass = B_est,
     biomass_se = biomass_se,
+    # Unfished spatial equilibrium and total unfished biomass (B0). Under
+    # movement B0 differs from the sum of per-area carrying capacities and is
+    # the appropriate baseline for depletion/status reporting.
+    b_unfished = model_results$b_unfished,
+    b0_total = model_results$b0_total,
     harvest_rate = hr_est,
     fitted_cpue = fc_est,
     residuals = residuals,
@@ -702,8 +744,14 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     hessian_valid = hessian_valid,
     n_parameters = n_est_pars,
     n_observations = n_obs,
+    # With process deviations the objective is the Laplace-marginal negative
+    # log-likelihood and n_est_pars counts only the fixed effects, so these are
+    # marginal AIC/BIC. They are not directly comparable with the conditional
+    # AIC of a mixed model and understate the flexibility contributed by the
+    # random effects; interpret with the usual conditional-AIC caveats.
     aic = 2 * n_est_pars + 2 * opt_result$objective,
     bic = log(n_obs) * n_est_pars + 2 * opt_result$objective,
+    ic_type = if (use_process_noise) "marginal (Laplace); see conditional-AIC caveats" else "standard",
     process_noise = use_process_noise,
     process_error_structure = if (use_process_noise) process_error_structure else "none",
     rho = if ("rho" %in% names(fitted_params)) fitted_params[["rho"]] else NA_real_,
@@ -1265,8 +1313,6 @@ calculate_model_results <- function(parameters, data) {
       stop("Missing K parameter for single-area model")
     }
   }
-  B_initial_vec <- d0 * K_vec
-  names(B_initial_vec) <- areas
 
   # Initialize outputs
   biomass <- matrix(NA_real_, nrow = n_years, ncol = n_areas, dimnames = list(as.character(data$years), areas))
@@ -1319,11 +1365,15 @@ calculate_model_results <- function(parameters, data) {
     Kmat <- W / rowSums(W)
   }
 
-  # Biomass recursion per area
-  biomass[1, ] <- as.numeric(B_initial_vec)
-
+  # Biomass recursion per area.
+  # Resolve the unfished spatial equilibrium, then apply initial depletion.
+  # The spin-up starts from the per-area carrying capacities and, when movement
+  # is present, converges to the joint (redistributed) unfished equilibrium
+  # rather than the per-area K. Initial depletion d0 scales that equilibrium, so
+  # the spin-up resolves the movement/unfished level while d0 sets depletion.
+  b_unfished <- as.numeric(K_vec)
   if (spinup_years > 0) {
-    b_spin <- biomass[1, ]
+    b_spin <- as.numeric(K_vec)
     for (s in seq_len(spinup_years)) {
       production <- .pt_production(b_spin, r, K_vec, m)
       production[!is.finite(production)] <- 0
@@ -1333,8 +1383,10 @@ calculate_model_results <- function(parameters, data) {
       }
       b_spin <- b_next
     }
-    biomass[1, ] <- b_spin
+    b_unfished <- b_spin
   }
+  names(b_unfished) <- areas
+  biomass[1, ] <- d0 * b_unfished
 
   env_term <- matrix(0, nrow = max(n_years - 1, 1), ncol = n_areas)
   if (has_env) {
@@ -1364,19 +1416,22 @@ calculate_model_results <- function(parameters, data) {
     production <- .pt_production(Bt, r, K_vec, m)
     production[!is.finite(production)] <- 0
     B_det <- pmax(Bt + production - catch_mat[t, ], 0.01)
-    if (has_env) {
-      biomass[t + 1, ] <- pmax(exp(log(B_det) + env_term[t, ]), 0.01)
+    b_next <- if (has_env) {
+      pmax(exp(log(B_det) + env_term[t, ]), 0.01)
     } else {
-      biomass[t + 1, ] <- B_det
+      B_det
     }
-  }
-
-  # Apply gravity movement redistribution (if present in data)
-  if (has_movement) {
-    for (t in 2:n_years) {
-      Bt <- biomass[t, ]
-      biomass[t, ] <- pmax((1 - move_rate) * Bt + move_rate * as.numeric(t(Kmat) %*% Bt), 0.01)
+    # Apply gravity movement within the annual step so the redistributed
+    # biomass carries forward as the next year's starting state. This couples
+    # areas over time and matches the RTMB objective (a genuine movement
+    # process rather than a post-hoc reshaping of the reported trajectory).
+    if (has_movement) {
+      b_next <- pmax(
+        (1 - move_rate) * b_next + move_rate * as.numeric(t(Kmat) %*% b_next),
+        0.01
+      )
     }
+    biomass[t + 1, ] <- b_next
   }
 
   # Derived quantities
@@ -1431,7 +1486,13 @@ calculate_model_results <- function(parameters, data) {
     biomass = biomass,
     harvest_rate = harvest_rate,
     fitted_cpue = if (!has_labels) fitted_cpue else fitted_cpue_arr,
-    residuals = residuals
+    residuals = residuals,
+    # Unfished spatial equilibrium (per area) and its total. Under movement this
+    # is the joint redistributed equilibrium and is the appropriate unfished
+    # baseline (B0) for depletion and status, distinct from the sum of per-area
+    # carrying capacities.
+    b_unfished = b_unfished,
+    b0_total = sum(b_unfished)
   )
 }
 

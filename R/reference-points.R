@@ -13,7 +13,11 @@ NULL
 #' implementation used throughout the package (and by dependent packages) so
 #' that reference points are always consistent with the production dynamics.
 #'
-#' @param r Intrinsic growth rate (per year).
+#' @param r Productivity parameter (per year). In this parameterisation the
+#'   per-capita growth rate as \eqn{B \to 0} is \eqn{r/(m-1)} and
+#'   \eqn{F_\mathrm{MSY} = r/m}; \code{r} equals the classical intrinsic growth
+#'   rate only for the Schaefer case \eqn{m = 2}. Priors on \code{r} should be
+#'   interpreted accordingly when \eqn{m \neq 2}.
 #' @param K Carrying capacity (tonnes).
 #' @param m Shape parameter (dimensionless).
 #'
@@ -180,13 +184,15 @@ get_reference_point_defaults <- function() {
 #'   }
 #'
 #' @details
-#' Reference points are calculated using the Pella-Tomlinson formulation:
+#' Reference points are calculated using the Pella-Tomlinson formulation
+#' (the single implementation in
+#' \code{\link{pella_tomlinson_reference_points}}):
 #'
-#' MSY = r * K * (m-1)^((m-1)/m) / m
+#' BMSY = K * m^(-1/(m-1))
 #'
-#' BMSY = K * (m-1)^(1/m) / m
+#' FMSY = r / m
 #'
-#' FMSY = MSY / BMSY
+#' MSY = FMSY * BMSY
 #'
 #' For user-defined biomass fractions `x`, the function also calculates
 #' analytical depletion-based targets:
@@ -265,10 +271,20 @@ calculate_reference_points <- function(model_fit, biomass_target = NULL, baselin
     stop("Missing required parameters: K")
   }
 
+  # Unfished biomass B0 from the fit (the movement-consistent equilibrium when
+  # movement is present; equal to sum of per-area K otherwise). Used as the
+  # B_initial baseline so status is reported against the correct unfished level.
+  b0_total <- if ("b0_total" %in% names(model_fit$results)) {
+    model_fit$results$b0_total
+  } else {
+    NULL
+  }
+
   ref_core <- calculate_reference_points_from_parameters(
     parameters = parameters,
     biomass_target = biomass_target,
-    baseline = baseline
+    baseline = baseline,
+    unfished_biomass = b0_total
   )
 
   # Calculate current status if biomass results are available
@@ -335,7 +351,8 @@ calculate_reference_points <- function(model_fit, biomass_target = NULL, baselin
 calculate_reference_points_from_parameters <- function(parameters,
                                                        biomass_target = NULL,
                                                        baseline = c("auto", "B_initial", "K"),
-                                                       warn_on_invalid_m = TRUE) {
+                                                       warn_on_invalid_m = TRUE,
+                                                       unfished_biomass = NULL) {
   required_params <- c("r", "m")
   if (!all(required_params %in% names(parameters))) {
     stop("Missing required parameters: ", paste(setdiff(required_params, names(parameters)), collapse = ", "))
@@ -376,7 +393,7 @@ calculate_reference_points_from_parameters <- function(parameters,
 
   target_reference_points <- NULL
   if (!is.null(biomass_target)) {
-    baseline_info <- resolve_reference_point_baseline(parameters, baseline)
+    baseline_info <- resolve_reference_point_baseline(parameters, baseline, unfished_biomass)
     target_reference_points <- calculate_target_reference_points(
       parameters = parameters,
       biomass_target = biomass_target,
@@ -460,7 +477,7 @@ print.pt_reference_points <- function(x, ...) {
   invisible(x)
 }
 
-resolve_reference_point_baseline <- function(parameters, baseline) {
+resolve_reference_point_baseline <- function(parameters, baseline, unfished_biomass = NULL) {
   param_names <- names(parameters)
 
   # Total carrying capacity: single-area "K" or summed per-area "K.<area>".
@@ -471,8 +488,18 @@ resolve_reference_point_baseline <- function(parameters, baseline) {
     if (any(k_idx)) sum(unname(parameters[k_idx])) else NA_real_
   }
 
+  # Unfished biomass B0. Under movement the joint unfished equilibrium differs
+  # from the sum of per-area carrying capacities, so use the model's resolved
+  # equilibrium (unfished_biomass) when available; otherwise fall back to K.
+  B0 <- if (!is.null(unfished_biomass) && is.finite(unfished_biomass) &&
+    unfished_biomass > 0) {
+    unfished_biomass
+  } else {
+    K_total
+  }
+
   # Initial biomass is derived from the fitted initial-depletion parameter
-  # d0 and carrying capacity: B_initial = d0 * K.
+  # d0 and the unfished biomass: B_initial = d0 * B0.
   has_d0 <- "d0" %in% param_names
 
   if (baseline == "auto") {
@@ -483,8 +510,9 @@ resolve_reference_point_baseline <- function(parameters, baseline) {
     if (!has_d0) {
       stop("baseline = 'B_initial' requested but no fitted d0 parameter was found")
     }
-    baseline_biomass <- unname(parameters[["d0"]]) * K_total
+    baseline_biomass <- unname(parameters[["d0"]]) * B0
   } else {
+    # "K" reports relative to carrying capacity (sum of per-area K).
     baseline_biomass <- K_total
   }
 

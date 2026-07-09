@@ -7,7 +7,11 @@
 pella_tomlinson_reference_points(r, K, m)
 }
 \arguments{
-\item{r}{Intrinsic growth rate (per year).}
+\item{r}{Productivity parameter (per year). In this parameterisation the
+per-capita growth rate as \eqn{B \to 0} is \eqn{r/(m-1)} and
+\eqn{F_\mathrm{MSY} = r/m}; \code{r} equals the classical intrinsic growth
+rate only for the Schaefer case \eqn{m = 2}. Priors on \code{r} should be
+interpreted accordingly when \eqn{m \neq 2}.}
 
 \item{K}{Carrying capacity (tonnes).}
 

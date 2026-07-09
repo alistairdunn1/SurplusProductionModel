@@ -21,6 +21,11 @@
 #'   or \\code{"none"}. Default is \\code{"historical"}.
 #' @param historical_window Number of most recent historical years to use when
 #'   \\code{process_error = "historical"} (default \\code{10}).
+#' @param bias_correction Logical. When \\code{TRUE} (default) and
+#'   \\code{process_error = "normal"}, the lognormal process deviations include
+#'   the \\eqn{-\\sigma^2/2} correction so that the projected biomass is
+#'   mean-unbiased. Ignored for \\code{"historical"} (empirical) and
+#'   \\code{"none"}.
 #' @param seed Optional integer random seed for reproducible simulation.
 #' @param probs Numeric vector of quantile probabilities used for summarized
 #'   projection output.
@@ -69,6 +74,7 @@ project_forward <- function(model_fit,
                             n_sim = 1000L,
                             process_error = c("historical", "normal", "none"),
                             historical_window = 10L,
+                            bias_correction = TRUE,
                             seed = NULL,
                             probs = c(0.05, 0.5, 0.95)) {
   if (!inherits(model_fit, "ProductionModel")) {
@@ -98,6 +104,10 @@ project_forward <- function(model_fit,
   }
   if (!is.numeric(probs) || any(!is.finite(probs)) || any(probs <= 0 | probs >= 1)) {
     stop("probs must be numeric values strictly between 0 and 1")
+  }
+  if (!is.logical(bias_correction) || length(bias_correction) != 1L ||
+    is.na(bias_correction)) {
+    stop("bias_correction must be a single logical value")
   }
 
   if (!is.null(seed)) set.seed(seed)
@@ -193,9 +203,15 @@ project_forward <- function(model_fit,
 
       b_det_next <- pmax(bt + prod_h - catch_h, 1e-8)
 
+      # Normal deviations are drawn with the -sigma^2/2 lognormal bias
+      # correction (when bias_correction = TRUE) so that E[exp(eps)] = 1 and
+      # the projected biomass is mean-unbiased, consistent with the operating
+      # model. Historical deviations are empirical realisations and are used
+      # as-is (their sample mean already reflects the fitted dynamics).
+      normal_mean <- if (isTRUE(bias_correction)) -0.5 * sigma_proc^2 else 0
       eps_h <- switch(process_error,
         none = rep(0, n_areas),
-        normal = stats::rnorm(n_areas, mean = 0, sd = sigma_proc),
+        normal = stats::rnorm(n_areas, mean = normal_mean, sd = sigma_proc),
         historical = {
           draw <- sample.int(nrow(hist_eps_recent), size = 1L)
           as.numeric(hist_eps_recent[draw, ])
@@ -266,6 +282,7 @@ project_forward <- function(model_fit,
       n_sim = n_sim,
       process_error = process_error,
       historical_window = historical_window,
+      bias_correction = bias_correction,
       sigma_proc = sigma_proc,
       probs = probs,
       seed = seed

@@ -45,8 +45,16 @@ for \code{movement_rate} when \code{estimate_movement_rate = TRUE}.
 If NULL, the fitter uses \code{data$movement$movement_rate} when
 provided, otherwise 0.12. Must lie in \code{(0, 1)}.}
 \item{spinup_years}{Non-negative integer number of deterministic
-pre-data years (zero catch) used to spin up biomass before the first
-observation year (default: 50).}
+pre-data years (zero catch) used to resolve the unfished equilibrium
+before the first observation year (default: 0, or 50 when movement
+inputs are supplied). The spin-up starts from the per-area carrying
+capacities and, when movement is present, converges to the joint
+(redistributed) unfished spatial equilibrium, which differs from the
+per-area \code{K}. Initial depletion \code{d0} is applied as a
+multiplier to that equilibrium, so the spin-up resolves the
+movement/unfished level while \code{d0} sets depletion; the two are
+complementary. Without movement the spin-up is a no-op (each area sits
+at its own \code{K}) and \code{d0} is applied directly to \code{K}.}
 \item{n_starts}{Integer, number of random restarts (default: 1).
 When > 1, the optimizer is run from \code{n_starts} different
 starting vectors (the original plus jittered versions) and the
@@ -93,6 +101,18 @@ random effects.
 
 In both modes, parameters are log-transformed where needed to enforce
 positivity constraints.
+
+The reported \code{aic} and \code{bic} use the optimised objective and the
+number of estimated fixed parameters. When \code{process_noise = TRUE} the
+objective is the Laplace-marginal negative log-likelihood, so these are
+marginal information criteria and carry the usual conditional-AIC caveats
+for mixed models (\code{results$ic_type} records which form applies).
+
+Carrying capacity \code{K}, catchability \code{q}, and initial depletion
+\code{d0} are jointly only weakly identified from a single relative CPUE
+index without a strong one-way-trip contrast. Supplying informative priors
+(see the \code{priors} option) on one or more of these, or fixing \code{d0},
+is recommended when the index is uninformative about absolute scale.
 }
 \examples{
 \dontrun{
