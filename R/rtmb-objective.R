@@ -29,6 +29,9 @@ NULL
 #'
 #' Production function (standard Pella-Tomlinson):
 #' \deqn{P(B) = \frac{r}{m-1} \cdot B \cdot \bigl(1 - (B/K)^{m-1}\bigr)}
+#' When \code{m} is fixed exactly at one, the objective uses the analytic Fox
+#' limit \eqn{P(B) = r B \log(K/B)}. Estimation of a freely varying shape
+#' parameter at the removable singularity is not supported.
 #'
 #' State equation (deterministic):
 #' \deqn{B_{t+1} = B_t + P(B_t) - C_t}
@@ -54,6 +57,11 @@ create_rtmb_objective <- function(data_env) {
     # ---- Transform global parameters from log scale ----
     r <- exp(log_r)
     m <- exp(log_m)
+    # The Fox model is a distinct, fixed-shape special case.  The production
+    # equation has a removable singularity at m = 1, which cannot be handled
+    # by branching on an RTMB AD variable.  model-fitting.R sets fox_mode only
+    # when log_m is fixed exactly at zero.
+    fox_mode <- isTRUE(data_env$fox_mode)
     sigma_obs <- exp(log_sigma_obs)
 
     n_years <- data_env$n_years
@@ -201,7 +209,11 @@ create_rtmb_objective <- function(data_env) {
           # Standard Pella-Tomlinson production: P = r/(m-1) * B * (1 - (B/K)^(m-1)).
         # The AD path cannot branch on m, so the Fox limit (m = 1) is not
         # special-cased here; keep m bounded away from 1 when estimating it.
-        prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / (m - 1)
+            prod_ia <- if (fox_mode) {
+              r * Bt_ia * log(K_vec[ia] / Bt_ia)
+            } else {
+              r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / (m - 1)
+            }
           B_det_ia <- Bt_ia + prod_ia
           B_det_ia <- 0.5 * (B_det_ia + sqrt(B_det_ia * B_det_ia + 4e-8)) + 1e-8
           B_next[ia] <- B_det_ia
@@ -235,10 +247,13 @@ create_rtmb_objective <- function(data_env) {
       B_next <- RTMB::advector(numeric(n_areas))
       for (ia in seq_len(n_areas)) {
         Bt_ia <- B[[t]][ia]
-        # Standard Pella-Tomlinson production: P = r/(m-1) * B * (1 - (B/K)^(m-1)).
-        # The AD path cannot branch on m, so the Fox limit (m = 1) is not
-        # special-cased here; keep m bounded away from 1 when estimating it.
-        prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / (m - 1)
+        # Standard Pella-Tomlinson production, with the exact Fox limit when
+        # m is fixed at one: P = r B log(K / B).
+        if (fox_mode) {
+          prod_ia <- r * Bt_ia * log(K_vec[ia] / Bt_ia)
+        } else {
+          prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / (m - 1)
+        }
         B_det_ia <- Bt_ia + prod_ia - catch_mat[t, ia]
         # Soft lower bound: RTMB cannot branch on AD types, so use
         # a differentiable approximation to max(x, eps).

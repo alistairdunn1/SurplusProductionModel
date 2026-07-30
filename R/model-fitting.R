@@ -123,6 +123,9 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
 #'
 #' @details
 #' This function implements the complete model fitting workflow:
+#' To fit the Fox model, fix \code{m = 1} (or \code{log_m = 0}) through
+#' \code{fixed_params}. The RTMB objective then uses the analytic Fox limit.
+#'
 #' 1. Data validation (if enabled)
 #' 2. Data preprocessing and alignment
 #' 3. Starting value generation (if not provided)
@@ -547,6 +550,12 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
       map_list[[fn]] <- factor(NA)
     }
   }
+
+  # RTMB cannot branch on the AD-valued shape parameter.  If the Fox shape is
+  # fixed exactly (m = 1; log_m = 0), pass a data-level flag so the objective
+  # evaluates the analytic Fox production equation.
+  rtmb_data$fox_mode <- "log_m" %in% names(map_list) &&
+    isTRUE(all.equal(as.numeric(rtmb_parms$log_m), 0))
 
   priors <- .prepare_model_priors(
     priors = options$priors,

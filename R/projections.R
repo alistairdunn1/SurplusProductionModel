@@ -1,55 +1,51 @@
 #' Forward Projection Under Assumed Harvest Control
 #'
 #' Projects a fitted Pella-Tomlinson model forward under assumed harvest
-#' control, specified either as target fishing mortality (
-#' \\code{control_type = "F"}) or catch (
-#' \\code{control_type = "catch"}). Process uncertainty can be propagated by
-#' sampling from either a normal process-error distribution or empirical
-#' historical process deviations.
+#' control, specified either as target fishing mortality
+#' (\code{control_type = "F"}) or catch (\code{control_type = "catch"}).
+#' Process uncertainty can be propagated by sampling from either a normal
+#' process-error distribution or empirical historical process deviations.
 #'
-#' @param model_fit A fitted \\code{ProductionModel} object.
-#' @param horizon Integer projection length in years (default \\code{10}).
-#' @param control Numeric scalar or vector of length \\code{horizon}. Interpreted
-#'   as fishing mortality (
-#'   \\code{control_type = "F"}) or total catch
-#'   (
-#'   \\code{control_type = "catch"}).
-#' @param control_type Character, one of \\code{"F"} or \\code{"catch"}.
+#' @param model_fit A fitted \code{ProductionModel} object.
+#' @param horizon Integer projection length in years (default \code{10}).
+#' @param control Numeric scalar or vector of length \code{horizon}. Interpreted
+#'   as fishing mortality (\code{control_type = "F"}) or total catch
+#'   (\code{control_type = "catch"}).
+#' @param control_type Character, one of \code{"F"} or \code{"catch"}.
 #' @param n_sim Number of Monte Carlo simulation trajectories (default
-#'   \\code{1000}).
-#' @param process_error Character, one of \\code{"historical"}, \\code{"normal"},
-#'   or \\code{"none"}. Default is \\code{"historical"}.
+#'   \code{1000}).
+#' @param process_error Character, one of \code{"historical"}, \code{"normal"},
+#'   or \code{"none"}. Default is \code{"historical"}.
 #' @param historical_window Number of most recent historical years to use when
-#'   \\code{process_error = "historical"} (default \\code{10}).
-#' @param bias_correction Logical. When \\code{TRUE} (default) and
-#'   \\code{process_error = "normal"}, the lognormal process deviations include
-#'   the \\eqn{-\\sigma^2/2} correction so that the projected biomass is
-#'   mean-unbiased. Ignored for \\code{"historical"} (empirical) and
-#'   \\code{"none"}.
+#'   \code{process_error = "historical"} (default \code{10}).
+#' @param bias_correction Logical. When \code{TRUE} (default) and
+#'   \code{process_error = "normal"}, the lognormal process deviations include
+#'   the \eqn{-\sigma^2/2} correction so that the projected biomass is
+#'   mean-unbiased. Ignored for \code{"historical"} (empirical) and
+#'   \code{"none"}.
 #' @param seed Optional integer random seed for reproducible simulation.
 #' @param probs Numeric vector of quantile probabilities used for summarized
 #'   projection output.
 #'
-#' @return An object of class \\code{"pt_projection"} with elements:
-#'   \\describe{
-#'     \\item{summary}{Data frame with yearly quantiles and status probabilities.}
-#'     \\item{years}{Projected years.}
-#'     \\item{control}{Expanded control vector used in projection.}
-#'     \\item{control_type}{Control interpretation (
-#'       \\code{"F"} or \\code{"catch"}).}
-#'     \\item{simulations}{List containing simulated biomass, catch, and harvest-rate arrays.}
-#'     \\item{settings}{List of simulation settings used.}
+#' @return An object of class \code{"pt_projection"} with elements:
+#'   \describe{
+#'     \item{summary}{Data frame with yearly quantiles and status probabilities.}
+#'     \item{years}{Projected years.}
+#'     \item{control}{Expanded control vector used in projection.}
+#'     \item{control_type}{Control interpretation (\code{"F"} or \code{"catch"}).}
+#'     \item{simulations}{List containing simulated biomass, catch, and harvest-rate arrays.}
+#'     \item{settings}{List of simulation settings used.}
 #'   }
 #'
 #' @details
 #' Historical process deviations are reconstructed from fitted biomass
 #' trajectories as
-#' \\deqn{\\epsilon_t = \\log(B_{t+1}) - \\log(\\max(B_t + P(B_t) - C_t, \\epsilon))}
+#' \deqn{\epsilon_t = \log(B_{t+1}) - \log(\max(B_t + P(B_t) - C_t, \epsilon))}
 #' and sampled with replacement from the most recent
-#' \\code{historical_window} years (default 10).
+#' \code{historical_window} years (default 10).
 #'
 #' @examples
-#' \\dontrun{
+#' \dontrun{
 #' fit <- fit_pella_tomlinson_model(data_list)
 #'
 #' # 10-year projection under constant F with historical process error resampling

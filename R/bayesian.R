@@ -433,7 +433,7 @@ bayesian_fit <- function(model_fit,
 }
 
 
-#' Split-Rhat from an [iterations x chains] matrix
+#' Split-Rhat from an \[iterations x chains\] matrix
 #' @keywords internal
 .split_rhat <- function(z) {
   n <- nrow(z)
@@ -456,7 +456,7 @@ bayesian_fit <- function(model_fit,
 }
 
 
-#' Bulk effective sample size from an [iterations x chains] matrix
+#' Bulk effective sample size from an \[iterations x chains\] matrix
 #'
 #' Uses the multi-chain autocovariance estimator with Geyer's initial
 #' monotone positive sequence truncation (Vehtari et al. 2021).

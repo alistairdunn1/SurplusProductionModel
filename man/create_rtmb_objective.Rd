@@ -30,6 +30,9 @@ harvest rates, fitted CPUE, natural-scale parameters).
 
 Production function (standard Pella-Tomlinson):
 \deqn{P(B) = \frac{r}{m-1} \cdot B \cdot \bigl(1 - (B/K)^{m-1}\bigr)}
+When \code{m} is fixed exactly at one, the objective uses the analytic Fox
+limit \eqn{P(B) = r B \log(K/B)}. Estimation of a freely varying shape
+parameter at the removable singularity is not supported.
 
 State equation (deterministic):
 \deqn{B_{t+1} = B_t + P(B_t) - C_t}

@@ -34,6 +34,29 @@ test_that("Fox (m = 1) limit gives K/e, r, rK/e", {
   expect_equal(rp$msy, 0.3 * 5000 / exp(1), tolerance = 1e-10)
 })
 
+test_that("RTMB fitting supports the fixed Fox model exactly", {
+  dat <- list(
+    cpue_data = data.frame(year = 2001:2008, cpue = rep(5, 8)),
+    catch_data = data.frame(year = 2001:2008, catch = rep(0, 8))
+  )
+  fit <- fit_pella_tomlinson_model(
+    dat,
+    options = list(
+      silent = TRUE,
+      show_starting_values_message = FALSE,
+      fixed_params = list(
+        log_r = log(0.3),
+        log_K = log(5000),
+        log_m = 0,
+        log_q = log(0.001),
+        log_d0 = 0
+      )
+    )
+  )
+  expect_true(fit$fitted)
+  expect_equal(unname(fit$parameters["m"]), 1, tolerance = 1e-12)
+})
+
 test_that("equilibrium harvest rate at BMSY equals FMSY", {
   for (m in c(1, 1.5, 2, 3)) {
     r <- 0.25

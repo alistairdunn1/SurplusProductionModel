@@ -83,6 +83,8 @@ using maximum likelihood estimation via RTMB.
 }
 \details{
 This function implements the complete model fitting workflow:
+To fit the Fox model, fix \code{m = 1} (or \code{log_m = 0}) through
+\code{fixed_params}. The RTMB objective then uses the analytic Fox limit.
 \enumerate{
 \item Data validation (if enabled)
 \item Data preprocessing and alignment

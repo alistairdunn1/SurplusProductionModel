@@ -2,11 +2,11 @@
 % Please edit documentation in R/bayesian.R
 \name{.split_rhat}
 \alias{.split_rhat}
-\title{Split-Rhat from an \link{iterations x chains} matrix}
+\title{Split-Rhat from an [iterations x chains] matrix}
 \usage{
 .split_rhat(z)
 }
 \description{
-Split-Rhat from an \link{iterations x chains} matrix
+Split-Rhat from an [iterations x chains] matrix
 }
 \keyword{internal}

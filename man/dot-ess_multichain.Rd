@@ -2,7 +2,7 @@
 % Please edit documentation in R/bayesian.R
 \name{.ess_multichain}
 \alias{.ess_multichain}
-\title{Bulk effective sample size from an \link{iterations x chains} matrix}
+\title{Bulk effective sample size from an [iterations x chains] matrix}
 \usage{
 .ess_multichain(z)
 }

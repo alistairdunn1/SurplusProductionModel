@@ -296,7 +296,9 @@ calculate_reference_points <- function(model_fit, biomass_target = NULL, baselin
     b_bmsy_ratio <- current_biomass / ref_core$bmsy
 
     # Determine stock status
-    if (b_bmsy_ratio > 1.0) {
+    if (!is.finite(b_bmsy_ratio)) {
+      status <- "Status unknown (non-finite BMSY)"
+    } else if (b_bmsy_ratio > 1.0) {
       status <- "Above BMSY"
     } else if (b_bmsy_ratio > 0.5) {
       status <- "Below BMSY but above half BMSY"
@@ -316,7 +318,9 @@ calculate_reference_points <- function(model_fit, biomass_target = NULL, baselin
       f_fmsy_ratio <- current_harvest_rate / ref_core$fmsy
 
       # Add harvest rate status
-      if (f_fmsy_ratio > 1.0) {
+      if (!is.finite(f_fmsy_ratio)) {
+        harvest_status <- "Status unknown (non-finite FMSY)"
+      } else if (f_fmsy_ratio > 1.0) {
         harvest_status <- "Overfishing occurring"
       } else {
         harvest_status <- "No overfishing"
