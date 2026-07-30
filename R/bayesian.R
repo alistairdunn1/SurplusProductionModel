@@ -213,9 +213,11 @@ bayesian_fit <- function(model_fit,
   colnames(nat_mat) <- nat_names
 
   # Derived quantities: MSY, BMSY, FMSY
-  # Need: r, K, m
+  # Need: r, K, m. K is stored per-area (K.A1, K.A2, ...) even for
+  # single-area models, so aggregate across areas rather than matching "K"
+  # exactly.
   r_col <- which(nat_names == "r")
-  K_col <- which(nat_names == "K")
+  K_draws_all <- .sum_k_draws(nat_mat)
   m_col <- which(nat_names == "m")
 
   n_draws <- nrow(nat_mat)
@@ -223,9 +225,9 @@ bayesian_fit <- function(model_fit,
   BMSY_vec <- rep(NA_real_, n_draws)
   FMSY_vec <- rep(NA_real_, n_draws)
 
-  if (length(r_col) == 1 && length(K_col) == 1 && length(m_col) == 1) {
+  if (length(r_col) == 1 && !is.null(K_draws_all) && length(m_col) == 1) {
     r_draws <- nat_mat[, r_col]
-    K_draws <- nat_mat[, K_col]
+    K_draws <- K_draws_all
     m_draws <- nat_mat[, m_col]
 
     # Standard Pella-Tomlinson: BMSY = K m^(-1/(m-1)), FMSY = r/m.
@@ -302,6 +304,23 @@ bayesian_fit <- function(model_fit,
 # =========================================================================
 # Internal helpers
 # =========================================================================
+
+#' Sum per-area K draws (columns "K" or "K.A1", "K.A2", ...) row-wise
+#'
+#' Mirrors the aggregation used by \code{calculate_reference_points_from_parameters}
+#' for MLE fits, since K is stored per-area (e.g. \code{K.A1}) even for
+#' single-area models.
+#' @keywords internal
+.sum_k_draws <- function(nat_mat) {
+  k_cols <- grep("^K($|\\.)", colnames(nat_mat), value = TRUE)
+  if (length(k_cols) == 0) {
+    return(NULL)
+  }
+  if (length(k_cols) == 1) {
+    return(nat_mat[, k_cols])
+  }
+  rowSums(nat_mat[, k_cols, drop = FALSE])
+}
 
 #' Map log-scale parameter names to natural-scale names
 #' @keywords internal
@@ -524,7 +543,10 @@ bayesian_fit <- function(model_fit,
     stop("baseline = 'B_initial' requested but no fitted d0 parameter was found")
   }
 
-  K_draws <- nat_mat[, "K"]
+  K_draws <- .sum_k_draws(nat_mat)
+  if (is.null(K_draws)) {
+    stop("No fitted K parameter found in the posterior draws")
+  }
   r_draws <- nat_mat[, "r"]
   m_draws <- nat_mat[, "m"]
 

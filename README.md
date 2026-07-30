@@ -26,7 +26,7 @@
 
 - **Delta-method standard errors** via `sdreport` (Hessian-based)
 - **Profile likelihood confidence intervals** (`profile_likelihood()`) for parameters and derived quantities
-- **Bayesian MCMC sampling** (`bayesian_fit()`) via Stan's NUTS sampler using `tmbstan`
+- **Bayesian MCMC sampling** (`bayesian_fit()`) via the sparse No-U-Turn Sampler in `SparseNUTS`
 - **Posterior predictive checks** (`posterior_predictive_check()`) for model validation
 
 ### Diagnostics & Visualization
@@ -44,10 +44,11 @@
 devtools::install_github("alistairdunn1/SurplusProductionModel")
 ```
 
-### Optional dependencies for Bayesian analysis:
+### Optional dependency for Bayesian analysis:
 
 ```r
-install.packages(c("tmbstan", "rstan"))
+# install.packages("remotes")
+remotes::install_github("noaa-afsc/SparseNUTS")
 ```
 
 ## Quick Start
@@ -142,9 +143,11 @@ model_data <- list(
 
 # Fit the model with multi-start optimization for robustness
 model_fit <- fit_pella_tomlinson_model(
-  model_data, 
-  n_starts = 3,  # Multiple starts to find global minimum
-  verbose = TRUE
+  model_data,
+  options = list(
+    n_starts = 3,  # Multiple starts to find global minimum
+    verbose = TRUE
+  )
 )
 
 # View results
@@ -231,11 +234,12 @@ print(profile_targets)
 
 ### Step 6: Bayesian Inference (Optional)
 
-Requires `tmbstan` package for MCMC sampling via Stan's NUTS algorithm.
+Requires the `SparseNUTS` package for MCMC sampling via its sparse NUTS
+implementation.
 
 ```r
-# Fit Bayesian model (requires tmbstan)
-if (requireNamespace("tmbstan", quietly = TRUE)) {
+# Fit Bayesian model (requires SparseNUTS)
+if (requireNamespace("SparseNUTS", quietly = TRUE)) {
   bayes_fit <- bayesian_fit(
     model_fit,
     chains = 4,
@@ -257,7 +261,7 @@ if (requireNamespace("tmbstan", quietly = TRUE)) {
   subset(bayes_fit_targets$summary, parameter %in% c("B_40%K", "F_40%K"))
   
   # Posterior predictive check
-  ppc <- posterior_predictive_check(bayes_fit, n_sim = 500)
+  ppc <- posterior_predictive_check(bayes_fit, n_sims = 500)
   print(ppc)  # Bayesian p-value
   plot(ppc)   # Observed vs replicated data distributions
 }
@@ -314,6 +318,6 @@ Where:
 If you use this package in your research, please cite:
 
 ```
-Dunn, A. (2025). SurplusProductionModel: Pella-Tomlinson Surplus Production Model. R package version 0.1.0.
+Dunn, A. (2026). SurplusProductionModel: Pella-Tomlinson Surplus Production Model. R package version 0.1.3.
 https://github.com/alistairdunn1/SurplusProductionModel
 ```
