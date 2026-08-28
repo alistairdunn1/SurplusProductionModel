@@ -38,7 +38,11 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
   starts <- generate_starting_values(processed_data)
 
   if (!is.null(k_start)) {
-    assert_number(k_start, lower = .Machine$double.eps, .var.name = "k_start")
+    checkmate::assert_number(
+      k_start,
+      lower = .Machine$double.eps,
+      .var.name = "k_start"
+    )
     k_keys <- grep("^log_K(\\.|_|$)", names(starts), value = TRUE)
     if (length(k_keys) == 0) {
       stop("No log_K parameters found in generated starting values.", call. = FALSE)

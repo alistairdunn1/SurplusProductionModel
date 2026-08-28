@@ -69,4 +69,5 @@
 #'
 #' Turchin, P. (1998). Quantitative Analysis of Movement: Measuring and Modelling Population Redistribution in Animals and Plants. Sinauer Associates, Sunderland, MA.
 #'
+#' @import checkmate
 "_PACKAGE"

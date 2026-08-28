@@ -200,7 +200,7 @@ create_rtmb_objective <- function(data_env) {
     # Initial depletion d0 is applied as a multiplier afterwards, so the spin-up
     # resolves the movement/unfished level while d0 sets depletion.
     B_unfished_vec <- B_initial_vec
-    if (spinup_years > 0) {
+    if (spinup_years > 0 && has_movement_inputs) {
       B_spin <- B_initial_vec
       for (s in seq_len(spinup_years)) {
         B_next <- RTMB::advector(numeric(n_areas))
