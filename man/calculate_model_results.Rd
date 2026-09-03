@@ -4,12 +4,15 @@
 \alias{calculate_model_results}
 \title{Calculate Model Results}
 \usage{
-calculate_model_results(parameters, data)
+calculate_model_results(parameters, data, process_deviations = NULL)
 }
 \arguments{
 \item{parameters}{Named vector of fitted parameters on natural scale}
 
 \item{data}{List of model data}
+
+\item{process_deviations}{Optional matrix of fitted log-scale process
+deviations, with transition years in rows and areas in columns}
 }
 \value{
 List with model results

@@ -65,7 +65,24 @@ test_that("multi-index multi-area fit runs and produces plausible outputs", {
   expect_true("log_d0" %in% names(start_vals))
 
   # Fit
-  fit <- fit_pella_tomlinson_model(data_list, params_init = start_vals, options = list(control = list(iter.max = 200, eval.max = 400), validate_data = FALSE))
+  fit <- fit_pella_tomlinson_model(
+    data_list,
+    params_init = start_vals,
+    options = list(
+      control = list(iter.max = 500, eval.max = 1000),
+      validate_data = FALSE,
+      fixed_params = list(
+        log_m = log(m),
+        log_sigma_obs = log(sigma_obs)
+      ),
+      priors = list(
+        r = list(dist = "lognormal", meanlog = log(r), sdlog = 0.5),
+        K = list(dist = "lognormal", meanlog = log(K), sdlog = 0.5)
+      ),
+      n_starts = 3L,
+      calculate_se = FALSE
+    )
+  )
 
   # Basic checks
   expect_s3_class(fit, "ProductionModel")

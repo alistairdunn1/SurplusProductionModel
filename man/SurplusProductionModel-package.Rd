@@ -97,6 +97,6 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Alistair Dunn \email{alistair.dunn@oceanenvironmental.co.nz} (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
+\strong{Maintainer}: Alistair Dunn \email{alistair.dunn@oceanenvironmental.co.nz}
 
 }

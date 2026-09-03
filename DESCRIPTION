@@ -6,7 +6,7 @@ Authors@R:
     person("Alistair", "Dunn", 
            email = "alistair.dunn@oceanenvironmental.co.nz", 
            role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
+           comment = c(""))
 Author: Alistair Dunn [aut, cre]
 Maintainer: Alistair Dunn <alistair.dunn@oceanenvironmental.co.nz>
 Description: 

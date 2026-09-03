@@ -74,9 +74,10 @@ create_rtmb_objective <- function(data_env) {
       sigma_proc <- exp(log_sigma_proc)
     }
 
-    has_movement_inputs <- !is.null(data_env$distance_matrix) &&
+    has_transition_matrix <- !is.null(data_env$transition_matrix)
+    has_movement_inputs <- has_transition_matrix || (!is.null(data_env$distance_matrix) &&
       !is.null(data_env$attractiveness) &&
-      !is.null(data_env$decay)
+      !is.null(data_env$decay))
     has_movement_param <- "log_movement_rate" %in% names(parms)
     if (has_movement_param) {
       move_rate <- 1 / (1 + exp(-parms[["log_movement_rate"]]))
@@ -155,7 +156,10 @@ create_rtmb_objective <- function(data_env) {
     }
 
     # Pre-build movement kernel when movement inputs are available.
-    if (has_movement_inputs) {
+    if (has_transition_matrix) {
+      Kmat <- data_env$transition_matrix
+      move_rate <- 1
+    } else if (has_movement_inputs) {
       decay_val <- data_env$decay
       dist_mat <- data_env$distance_matrix
       attract <- data_env$attractiveness
@@ -255,6 +259,16 @@ create_rtmb_objective <- function(data_env) {
           prod_ia <- r * Bt_ia * (1 - (Bt_ia / K_vec[ia])^(m - 1)) / (m - 1)
         }
         B_det_ia <- Bt_ia + prod_ia - catch_mat[t, ia]
+        # Penalise removals that exceed biomass plus production. Without this
+        # constraint, the soft biomass floor can create a depleted likelihood
+        # basin in which catchability increases to offset near-zero biomass.
+        # The scaled smooth positive part retains finite AD derivatives.
+        relative_shortfall <- -B_det_ia / K_vec[ia]
+        relative_shortfall <- 0.5 * (
+          relative_shortfall +
+            sqrt(relative_shortfall * relative_shortfall + 4e-12)
+        )
+        nll <- nll + 1e4 * relative_shortfall * relative_shortfall
         # Soft lower bound: RTMB cannot branch on AD types, so use
         # a differentiable approximation to max(x, eps).
         # sqrt(x^2 + eps^2) ≈ |x| for |x| >> eps.
@@ -737,7 +751,7 @@ generate_starting_values <- function(data) {
     cpue_a <- cpue_mat[, 1]
     mean_cpue_a <- mean(cpue_a, na.rm = TRUE)
     q_est_a <- mean_cpue_a / (K_est / 2)
-    q_est_a <- max(1e-8, min(ifelse(is.na(q_est_a) || !is.finite(q_est_a), 1e-3, q_est_a), 1.0))
+    q_est_a <- max(1e-8, ifelse(is.na(q_est_a) || !is.finite(q_est_a), 1e-3, q_est_a))
     first_non_na <- which(!is.na(cpue_a))[1]
     cpue0 <- if (!is.na(first_non_na)) cpue_a[first_non_na] else mean_cpue_a
     if (is.na(cpue0) || !is.finite(cpue0)) cpue0 <- max(mean_cpue_a, 1e-6)
@@ -749,7 +763,7 @@ generate_starting_values <- function(data) {
       cpue_a <- cpue_mat[, j]
       mean_cpue_a <- mean(cpue_a, na.rm = TRUE)
       q_est_a <- mean_cpue_a / (K_est_a / 2)
-      q_est_a <- max(1e-8, min(ifelse(is.na(q_est_a) || !is.finite(q_est_a), 1e-3, q_est_a), 1.0))
+      q_est_a <- max(1e-8, ifelse(is.na(q_est_a) || !is.finite(q_est_a), 1e-3, q_est_a))
       first_non_na <- which(!is.na(cpue_a))[1]
       cpue0 <- if (!is.na(first_non_na)) cpue_a[first_non_na] else mean_cpue_a
       if (is.na(cpue0) || !is.finite(cpue0)) cpue0 <- max(mean_cpue_a, 1e-6)
@@ -767,7 +781,7 @@ generate_starting_values <- function(data) {
       for (l in seq_along(labels)) {
         mean_cpue_al <- mean(data$cpue[, j, l], na.rm = TRUE)
         q_est_al <- mean_cpue_al / (K_est_a / 2)
-        q_est_al <- max(1e-8, min(ifelse(is.na(q_est_al) || !is.finite(q_est_al), 1e-3, q_est_al), 1.0))
+        q_est_al <- max(1e-8, ifelse(is.na(q_est_al) || !is.finite(q_est_al), 1e-3, q_est_al))
         starting_values[[paste0("log_q.", a, ".", labels[[l]])]] <- log(q_est_al)
       }
     }

@@ -36,6 +36,42 @@ test_that("pella_tomlinson_production function works correctly", {
   expect_error(pella_tomlinson_production(1000, r = 0.3, K = 5000, m = 0))
 })
 
+test_that("spatial spin-up stabilises biomass before the first fishing year", {
+  areas <- c("source", "destination")
+  transition_matrix <- matrix(
+    c(0.8, 0.2, 0.05, 0.95),
+    nrow = 2,
+    byrow = TRUE,
+    dimnames = list(areas, areas)
+  )
+  parameters <- c(
+    r = 0.2,
+    K.source = 1000,
+    K.destination = 500,
+    m = 2,
+    q.source = 0.001,
+    q.destination = 0.001,
+    d0 = 1
+  )
+  data <- list(
+    years = 2000:2002,
+    areas = areas,
+    catch = matrix(0, nrow = 3, ncol = 2),
+    cpue = matrix(NA_real_, nrow = 3, ncol = 2),
+    transition_matrix = transition_matrix,
+    spinup_years = 500L
+  )
+
+  results <- calculate_model_results(parameters, data)
+
+  expect_equal(results$biomass[1, ], results$b_unfished)
+  expect_equal(results$biomass[2, ], results$biomass[1, ], tolerance = 1e-8)
+  expect_false(isTRUE(all.equal(
+    unname(results$b_unfished),
+    unname(parameters[c("K.source", "K.destination")])
+  )))
+})
+
 test_that("generate_starting_values creates reasonable parameters", {
   # Create test data
   years <- 2000:2020
@@ -482,6 +518,16 @@ test_that("AR1 process structure captures positive autocorrelation better than I
   expect_true(is.finite(fit_ar1$results$rho))
   expect_gt(unname(fit_ar1$results$rho), 0.2)
 
+  expect_equal(dim(fit_ar1$results$process_deviations), c(n - 1L, 1L))
+  reported_biomass <- fit_ar1$results$sdreport$value[
+    names(fit_ar1$results$sdreport$value) == "B_mat"
+  ]
+  expect_equal(
+    as.numeric(fit_ar1$results$biomass),
+    as.numeric(reported_biomass),
+    tolerance = 1e-6
+  )
+
   # AR1 should fit at least as well as IID on AR1-generated data.
   expect_lte(fit_ar1$results$likelihood, fit_iid$results$likelihood + 1e-6)
 })
@@ -518,7 +564,17 @@ test_that("fit_pella_tomlinson_model integration test with simple data", {
   options_list <- list(
     validate_data = FALSE,
     silent = TRUE,
-    control = list(eval.max = 100, iter.max = 50) # Reduced for testing
+    control = list(eval.max = 1000, iter.max = 500),
+    fixed_params = list(
+      log_m = log(2),
+      log_d0 = log(0.8),
+      log_sigma_obs = log(0.05)
+    ),
+    priors = list(
+      r = list(dist = "lognormal", meanlog = log(0.3), sdlog = 0.5),
+      K = list(dist = "lognormal", meanlog = log(5000), sdlog = 0.5)
+    ),
+    calculate_se = FALSE
   )
 
   # This test might fail if RTMB is not properly installed
@@ -536,6 +592,8 @@ test_that("fit_pella_tomlinson_model integration test with simple data", {
     expect_s3_class(result, "ProductionModel")
     expect_true(result$fitted)
     expect_true(length(result$parameters) > 0)
+    expect_true(length(result$results$log_parameters) > 0)
+    expect_true(all(is.finite(result$results$log_parameters)))
     expect_true("biomass" %in% names(result$results))
     expect_true("likelihood" %in% names(result$results))
   }

@@ -177,7 +177,17 @@ test_that("fit with n_starts > 1 produces a valid ProductionModel", {
     fit_pella_tomlinson_model(data_list, options = list(
       silent = TRUE, validate_data = FALSE,
       n_starts = 3, jitter_sd = 0.15,
-      control = list(eval.max = 1000, iter.max = 500)
+      control = list(eval.max = 1000, iter.max = 500),
+      fixed_params = list(
+        log_m = log(2),
+        log_d0 = log(0.8),
+        log_sigma_obs = log(0.05)
+      ),
+      priors = list(
+        r = list(dist = "lognormal", meanlog = log(0.3), sdlog = 0.5),
+        K = list(dist = "lognormal", meanlog = log(5000), sdlog = 0.5)
+      ),
+      calculate_se = FALSE
     ))
   }, error = function(e) {
     skip(paste("Multi-start fitting failed:", e$message))

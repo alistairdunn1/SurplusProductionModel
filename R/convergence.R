@@ -64,7 +64,10 @@ jitter_test <- function(model_fit, n_jitter = 10, jitter_sd = 0.2,
   obj <- model_fit$results$rtmb_obj
   if (is.null(obj)) stop("rtmb_obj not found in results -- was the model fitted with RTMB?")
 
-  base_par  <- obj$par
+  base_par  <- model_fit$results$opt_par
+  if (is.null(base_par)) {
+    stop("Optimised parameters not found in results")
+  }
   ctrl      <- list(eval.max = 1000, iter.max = 500)
   n_total   <- n_jitter + 1L   # include the original
 
@@ -74,7 +77,17 @@ jitter_test <- function(model_fit, n_jitter = 10, jitter_sd = 0.2,
   colnames(par_mat) <- names(base_par)
 
   for (i in seq_len(n_total)) {
-    start_par <- if (i == 1L) base_par else base_par + rnorm(length(base_par), 0, jitter_sd)
+    if (i == 1L) {
+      # Run 1 represents the original fit; do not optimise it again because
+      # doing so can move to a different minimum and no longer reports the
+      # likelihood or convergence status of the supplied model.
+      nll_vec[i] <- model_fit$results$likelihood
+      conv_vec[i] <- model_fit$results$convergence
+      par_mat[i, ] <- base_par
+      next
+    }
+
+    start_par <- base_par + rnorm(length(base_par), 0, jitter_sd)
     opt <- tryCatch(
       nlminb(start_par, obj$fn, obj$gr, control = ctrl),
       error = function(e) list(objective = NA_real_, convergence = 99L, par = rep(NA_real_, length(base_par)))

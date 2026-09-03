@@ -283,6 +283,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # Attach movement inputs (if provided) to processed data
   if (is.list(data$movement)) {
     # Accept distance_matrix, attractiveness, movement_rate, decay
+    if (!is.null(data$movement$transition_matrix)) processed_data$transition_matrix <- data$movement$transition_matrix
     if (!is.null(data$movement$distance_matrix)) processed_data$distance_matrix <- data$movement$distance_matrix
     if (!is.null(data$movement$attractiveness)) processed_data$attractiveness <- data$movement$attractiveness
     if (!is.null(data$movement$movement_rate)) processed_data$movement_rate <- data$movement$movement_rate
@@ -291,6 +292,23 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   if (!is.null(processed_data$areas)) {
     area_levels <- as.character(processed_data$areas)
+
+    if (!is.null(processed_data$transition_matrix)) {
+      tm <- processed_data$transition_matrix
+      if (!is.matrix(tm) || nrow(tm) != length(area_levels) || ncol(tm) != length(area_levels)) {
+        stop("movement transition_matrix dimensions must match the number of model areas")
+      }
+      if (!is.null(rownames(tm)) && !is.null(colnames(tm))) {
+        if (!all(area_levels %in% rownames(tm)) || !all(area_levels %in% colnames(tm))) {
+          stop("movement transition_matrix row/column names must include all model areas")
+        }
+        tm <- tm[area_levels, area_levels, drop = FALSE]
+      }
+      if (any(!is.finite(tm)) || any(tm < 0) || any(abs(rowSums(tm) - 1) > 1e-10)) {
+        stop("movement transition_matrix must be finite, non-negative, and have rows that sum to one")
+      }
+      processed_data$transition_matrix <- tm
+    }
 
     if (!is.null(processed_data$distance_matrix)) {
       dm <- processed_data$distance_matrix
@@ -326,9 +344,10 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     }
   }
 
-  has_movement_inputs <- !is.null(processed_data$distance_matrix) &&
+  has_transition_matrix <- !is.null(processed_data$transition_matrix)
+  has_movement_inputs <- has_transition_matrix || (!is.null(processed_data$distance_matrix) &&
     !is.null(processed_data$attractiveness) &&
-    !is.null(processed_data$decay)
+    !is.null(processed_data$decay))
 
   # The spin-up resolves the unfished spatial equilibrium, which under movement
   # differs from the per-area carrying capacities (biomass is redistributed
@@ -347,10 +366,18 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     }
   }
 
+  # Retain the resolved option for the plain-R reconstruction performed after
+  # optimisation. The RTMB objective and reported biomass must use the same
+  # pre-fishing spatial equilibrium.
+  processed_data$spinup_years <- spinup_years
+
   if (estimate_movement_rate && !has_movement_inputs) {
     stop(
       "options$estimate_movement_rate = TRUE requires data$movement with distance_matrix, attractiveness, and decay"
     )
+  }
+  if (estimate_movement_rate && has_transition_matrix) {
+    stop("estimate_movement_rate cannot be used with a complete transition_matrix")
   }
 
   # Optional environmental covariates used in biomass transition equation
@@ -504,12 +531,17 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   # Attach movement data
   if (has_movement_inputs) {
+    if (has_transition_matrix) {
+      rtmb_data$transition_matrix <- processed_data$transition_matrix
+    }
     if (!is.null(processed_data$movement_rate)) {
       rtmb_data$movement_rate <- as.numeric(processed_data$movement_rate)
     }
-    rtmb_data$decay <- processed_data$decay
-    rtmb_data$distance_matrix <- processed_data$distance_matrix
-    rtmb_data$attractiveness <- processed_data$attractiveness
+    if (!has_transition_matrix) {
+      rtmb_data$decay <- processed_data$decay
+      rtmb_data$distance_matrix <- processed_data$distance_matrix
+      rtmb_data$attractiveness <- processed_data$attractiveness
+    }
   }
 
   # ---- Build parameter list for MakeADFun ---------------------------
@@ -536,6 +568,14 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # and use map = list(param_name = factor(NA)) to fix it.
   fixed <- options$fixed_params
   map_list <- list()
+
+  # Process-error variance is absent from the deterministic objective. Keep
+  # its supplied value for result compatibility, but do not optimise an
+  # unidentifiable parameter.
+  if (!use_process_noise && "log_sigma_proc" %in% names(rtmb_parms)) {
+    map_list$log_sigma_proc <- factor(NA)
+  }
+
   if (!is.null(fixed) && length(fixed) > 0) {
     for (orig in names(fixed)) {
       # RTMB parameter names use underscores (log_K_A1); fixed_params may be
@@ -554,7 +594,6 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
       map_list[[fn]] <- factor(NA)
     }
   }
-
   # RTMB cannot branch on the AD-valued shape parameter.  If the Fox shape is
   # fixed exactly (m = 1; log_m = 0), pass a data-level flag so the objective
   # evaluates the analytic Fox production equation.
@@ -583,6 +622,44 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     silent     = options$silent
   )
 
+  # Retain a data-derived alternative to a supplied sequential warm start.
+  # A management trajectory can move into a different likelihood basin, so
+  # jittering only the preceding fit does not provide independent starts.
+  automatic_start <- rename_dots(generate_starting_values(processed_data))
+  if (n_areas == 1L) {
+    area <- areas[[1]]
+    q_name <- paste0("log_q_", area)
+    k_name <- paste0("log_K_", area)
+    if ("log_q" %in% names(automatic_start)) {
+      automatic_start[[q_name]] <- automatic_start[["log_q"]]
+    }
+    if ("log_K" %in% names(automatic_start)) {
+      automatic_start[[k_name]] <- automatic_start[["log_K"]]
+    }
+  }
+  automatic_start_par <- obj$par
+  common_start_names <- intersect(
+    names(automatic_start_par),
+    names(automatic_start)
+  )
+  automatic_start_par[common_start_names] <- unlist(
+    automatic_start[common_start_names],
+    use.names = FALSE
+  )
+
+  lower_bounds <- rep(-Inf, length(obj$par))
+  upper_bounds <- rep(Inf, length(obj$par))
+  names(lower_bounds) <- names(upper_bounds) <- names(obj$par)
+  if ("log_d0" %in% names(obj$par)) {
+    # Initial depletion is a proportion of unfished biomass.
+    lower_bounds[["log_d0"]] <- log(1e-4)
+    upper_bounds[["log_d0"]] <- 0
+  }
+  clamp_to_bounds <- function(par) {
+    pmin(pmax(par, lower_bounds), upper_bounds)
+  }
+  automatic_start_par <- clamp_to_bounds(automatic_start_par)
+
   # ---- Optimise (with optional multi-start) ----------------------------
   n_starts <- max(1L, as.integer(options$n_starts %||% 1L))
   jitter_sd <- as.numeric(options$jitter_sd %||% 0.2)
@@ -591,36 +668,127 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   best_opt <- NULL
   best_nll <- Inf
+  best_converged <- FALSE
 
   for (istart in seq_len(n_starts)) {
     if (istart == 1L) {
       start_par <- obj$par
+    } else if (istart == 2L && !is.null(params_init)) {
+      start_par <- automatic_start_par
     } else {
-      # Jitter the starting parameters on the log scale
-      start_par <- obj$par + rnorm(length(obj$par), 0, jitter_sd)
+      # Use deterministic dispersed offsets on the log scale. Optimisation
+      # must not consume the simulation random-number stream because that
+      # changes future observations and parallel reproducibility.
+      start_centre <- if (istart %% 2L == 0L) {
+        automatic_start_par
+      } else {
+        obj$par
+      }
+      coordinate <- seq_along(obj$par)
+      phase <- (
+        coordinate * 0.618033988749895 +
+          (istart - 2L) * 0.414213562373095
+      ) %% 1
+      phase <- pmin(pmax(phase, 1e-6), 1 - 1e-6)
+      start_par <- start_centre + stats::qnorm(phase) * jitter_sd
     }
     this_opt <- tryCatch(
       nlminb(
-        start     = start_par,
+        start     = clamp_to_bounds(start_par),
         objective = obj$fn,
         gradient  = obj$gr,
+        lower     = lower_bounds,
+        upper     = upper_bounds,
         control   = options$control
       ),
       error = function(e) NULL
     )
-    if (!is.null(this_opt) && is.finite(this_opt$objective) &&
-      this_opt$objective < best_nll) {
-      best_nll <- this_opt$objective
-      best_opt <- this_opt
+    if (!is.null(this_opt) && is.finite(this_opt$objective)) {
+      this_converged <- isTRUE(this_opt$convergence == 0)
+      replace_best <- is.null(best_opt) ||
+        (this_converged && !best_converged) ||
+        (this_converged == best_converged &&
+          this_opt$objective < best_nll)
+
+      if (replace_best) {
+        best_nll <- this_opt$objective
+        best_opt <- this_opt
+        best_converged <- this_converged
+      }
+    }
+  }
+
+  # nlminb can report false convergence or an iteration limit after reaching
+  # a useful parameter region. Restart once from the best finite candidate so
+  # that convergence is assessed from that region rather than from another
+  # jittered initial value. A non-converged restart remains a failed fit.
+  if (!is.null(best_opt) && !best_converged) {
+    restart_opt <- tryCatch(
+      nlminb(
+        start = clamp_to_bounds(best_opt$par),
+        objective = obj$fn,
+        gradient = obj$gr,
+        lower = lower_bounds,
+        upper = upper_bounds,
+        control = options$control
+      ),
+      error = function(e) NULL
+    )
+    if (!is.null(restart_opt) && is.finite(restart_opt$objective)) {
+      restart_converged <- isTRUE(restart_opt$convergence == 0)
+      if (restart_converged || restart_opt$objective < best_nll) {
+        best_opt <- restart_opt
+        best_nll <- restart_opt$objective
+        best_converged <- restart_converged
+      }
+    }
+  }
+
+  # Use an independent quasi-Newton convergence check when PORT cannot certify
+  # the best finite solution. This addresses false-convergence diagnostics
+  # without accepting a non-converged estimate or changing the objective.
+  if (!is.null(best_opt) && !best_converged) {
+    bfgs_control <- list(
+      maxit = as.integer(options$control$iter.max %||% 500L),
+      factr = 1e7,
+      pgtol = as.numeric(options$control$rel.tol %||% 1e-8)
+    )
+    bfgs_opt <- tryCatch(
+      stats::optim(
+        par = best_opt$par,
+        fn = obj$fn,
+        gr = obj$gr,
+        method = "L-BFGS-B",
+        lower = lower_bounds,
+        upper = upper_bounds,
+        control = bfgs_control
+      ),
+      error = function(e) NULL
+    )
+    if (!is.null(bfgs_opt) &&
+      is.finite(bfgs_opt$value) &&
+      isTRUE(bfgs_opt$convergence == 0)) {
+      best_opt <- list(
+        par = bfgs_opt$par,
+        objective = bfgs_opt$value,
+        convergence = 0L,
+        iterations = unname(bfgs_opt$counts[["function"]]),
+        evaluations = unname(bfgs_opt$counts),
+        message = "relative convergence (L-BFGS-B verification)"
+      )
+      best_nll <- bfgs_opt$value
+      best_converged <- TRUE
     }
   }
 
   # Fall back to the first run if all starts failed
   if (is.null(best_opt)) {
     best_opt <- nlminb(
-      start     = obj$par,
+      start     = clamp_to_bounds(obj$par),
       objective = obj$fn,
       gradient  = obj$gr,
+      lower     = lower_bounds,
+      upper     = upper_bounds,
       control   = options$control
     )
   }
@@ -631,9 +799,20 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
 
   # Check convergence
   if (opt_result$convergence != 0) {
+    gradient_at_solution <- tryCatch(
+      obj$gr(opt_result$par),
+      error = function(e) rep(NA_real_, length(opt_result$par))
+    )
     warning(
       "Model did not converge. Convergence code: ", opt_result$convergence,
-      ". Message: ", opt_result$message
+      ". Message: ", opt_result$message,
+      ". Objective: ", signif(opt_result$objective, 8),
+      ". Maximum absolute gradient: ",
+      signif(max(abs(gradient_at_solution), na.rm = TRUE), 8),
+      ". Parameters: ", paste(
+        paste0(names(opt_result$par), "=", signif(opt_result$par, 6)),
+        collapse = ", "
+      )
     )
   }
 
@@ -692,10 +871,48 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   }
   fitted_params <- transform_parameters_to_natural(log_par_scalar)
 
+  # Recover the conditional modes of the fitted process deviations. When
+  # standard errors were calculated, sdreport provides the modes used for its
+  # ADREPORT trajectory. Otherwise, update the inner Laplace solution at the
+  # optimum and restore the original parameter dimensions with parList().
+  process_deviations <- NULL
+  if (use_process_noise) {
+    expected_dimensions <- c(n_years - 1L, n_areas)
+    if (!is.null(sdr) &&
+        length(sdr$par.random) == prod(expected_dimensions)) {
+      process_deviations <- matrix(
+        as.numeric(sdr$par.random),
+        nrow = expected_dimensions[[1]],
+        ncol = expected_dimensions[[2]]
+      )
+    } else {
+      invisible(obj$fn(opt_result$par))
+      conditional_parameters <- obj$env$parList()
+      process_deviations <- conditional_parameters$proc_dev
+    }
+    if (!is.matrix(process_deviations) ||
+        !identical(dim(process_deviations), expected_dimensions) ||
+        any(!is.finite(process_deviations))) {
+      stop(
+        "RTMB did not return a finite process-deviation matrix with dimensions ",
+        paste(expected_dimensions, collapse = " x "),
+        call. = FALSE
+      )
+    }
+    dimnames(process_deviations) <- list(
+      year = as.character(processed_data$years[-n_years]),
+      area = areas
+    )
+  }
+
   # Recompute derived quantities in plain R from fitted parameters.
   # This avoids RTMB REPORT/advector complications (NaN promotion,
   # dimension loss) while still using ADREPORT for sdreport SEs.
-  model_results <- calculate_model_results(fitted_params, processed_data)
+  model_results <- calculate_model_results(
+    fitted_params,
+    processed_data,
+    process_deviations = process_deviations
+  )
   B_est <- model_results$biomass
   hr_est <- model_results$harvest_rate
   fc_est <- model_results$fitted_cpue
@@ -735,6 +952,10 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
   # Package results
   results_list <- list(
     parameters = fitted_params,
+    # Retain the complete optimised parameter vector on the fitting scale.
+    # This includes mapped parameters and permits sequential assessments to
+    # start from the preceding converged solution.
+    log_parameters = log_par_scalar,
     std_errors = std_errors,
     biomass = B_est,
     biomass_se = biomass_se,
@@ -767,6 +988,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     ic_type = if (use_process_noise) "marginal (Laplace); see conditional-AIC caveats" else "standard",
     process_noise = use_process_noise,
     process_error_structure = if (use_process_noise) process_error_structure else "none",
+    process_deviations = process_deviations,
     rho = if ("rho" %in% names(fitted_params)) fitted_params[["rho"]] else NA_real_,
     movement_rate = if ("movement_rate" %in% names(fitted_params)) fitted_params[["movement_rate"]] else (processed_data$movement_rate %||% NA_real_),
     env_effects = {
@@ -803,7 +1025,9 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
         effort = effort,
         spinup_years = spinup_years,
         movement = if (has_movement_inputs) {
-          list(
+          if (has_transition_matrix) list(
+            transition_matrix = processed_data$transition_matrix
+          ) else list(
             distance_matrix = processed_data$distance_matrix,
             attractiveness = processed_data$attractiveness,
             decay = processed_data$decay,
@@ -819,7 +1043,7 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
         env_scaling = processed_data$env_scaling %||% NULL
       ),
       results = results_list,
-      fitted = TRUE,
+      fitted = isTRUE(opt_result$convergence == 0),
       model_type = "pella_tomlinson",
       creation_date = Sys.time()
     ),
@@ -1238,11 +1462,13 @@ transform_parameters_to_natural <- function(log_params) {
 #'
 #' @param parameters Named vector of fitted parameters on natural scale
 #' @param data List of model data
+#' @param process_deviations Optional matrix of fitted log-scale process
+#'   deviations, with transition years in rows and areas in columns
 #'
 #' @return List with model results
 #'
 #' @keywords internal
-calculate_model_results <- function(parameters, data) {
+calculate_model_results <- function(parameters, data, process_deviations = NULL) {
   n_years <- length(data$years)
   spinup_years <- as.integer(data$spinup_years %||% 0L)
   multi_area <- is.matrix(data$catch) || is.matrix(data$cpue) || !is.null(data$areas)
@@ -1250,6 +1476,20 @@ calculate_model_results <- function(parameters, data) {
   n_areas <- if (multi_area) length(areas) else 1L
   has_labels <- !is.null(data$labels)
   has_env <- !is.null(data$env_array)
+  has_process_deviations <- !is.null(process_deviations)
+
+  if (has_process_deviations) {
+    expected_dimensions <- c(n_years - 1L, n_areas)
+    if (!is.matrix(process_deviations) ||
+        !identical(dim(process_deviations), expected_dimensions) ||
+        any(!is.finite(process_deviations))) {
+      stop(
+        "process_deviations must be a finite matrix with dimensions ",
+        paste(expected_dimensions, collapse = " x "),
+        call. = FALSE
+      )
+    }
+  }
 
   # Extract global parameters
   r <- parameters[["r"]]
@@ -1340,14 +1580,19 @@ calculate_model_results <- function(parameters, data) {
     cpue_arr <- data$cpue
   }
 
-  move_rate <- if (!is.null(names(parameters)) && "movement_rate" %in% names(parameters)) {
+  has_transition_matrix <- !is.null(data$transition_matrix)
+  move_rate <- if (has_transition_matrix) {
+    1
+  } else if (!is.null(names(parameters)) && "movement_rate" %in% names(parameters)) {
     as.numeric(parameters[["movement_rate"]])
   } else {
     as.numeric(data$movement_rate %||% NA_real_)
   }
-  has_movement <- is.finite(move_rate) && move_rate > 0 &&
-    !is.null(data$distance_matrix) && !is.null(data$attractiveness) && !is.null(data$decay)
-  if (has_movement) {
+  has_movement <- has_transition_matrix || (is.finite(move_rate) && move_rate > 0 &&
+    !is.null(data$distance_matrix) && !is.null(data$attractiveness) && !is.null(data$decay))
+  if (has_transition_matrix) {
+    Kmat <- data$transition_matrix
+  } else if (has_movement) {
     decay_val <- data$decay
     dist_mat <- data$distance_matrix
     attract <- data$attractiveness
@@ -1429,8 +1674,12 @@ calculate_model_results <- function(parameters, data) {
     production <- .pt_production(Bt, r, K_vec, m)
     production[!is.finite(production)] <- 0
     B_det <- pmax(Bt + production - catch_mat[t, ], 0.01)
-    b_next <- if (has_env) {
-      pmax(exp(log(B_det) + env_term[t, ]), 0.01)
+    b_next <- if (has_env || has_process_deviations) {
+      log_increment <- env_term[t, ]
+      if (has_process_deviations) {
+        log_increment <- log_increment + process_deviations[t, ]
+      }
+      pmax(exp(log(B_det) + log_increment), 0.01)
     } else {
       B_det
     }
