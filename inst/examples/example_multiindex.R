@@ -51,6 +51,12 @@ catch_df <- do.call(rbind, lapply(1:nA, function(a) {
 
 data_list <- list(cpue_data = cpue_df, catch_data = catch_df)
 
-fit <- SurplusProductionModel::fit_pella_tomlinson_model(data_list, options = list(validate_data = FALSE))
+fit <- SurplusProductionModel::fit_pella_tomlinson_model(
+  data_list,
+  options = list(
+    fixed_params = list(log_m = log(m)),
+    control = list(eval.max = 5000, iter.max = 2000)
+  )
+)
 print(fit)
 plots <- SurplusProductionModel::plot_model_fit(fit)

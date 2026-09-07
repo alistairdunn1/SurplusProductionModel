@@ -91,10 +91,11 @@ likelihood estimate so that chains begin in a high-density region.
 \details{
 \strong{Priors.}
 By default the sampler uses flat (improper) priors on the log-scale
-parameters, so the posterior is proportional to the likelihood.
+parameters when no priors were supplied to the fitter.
 You can impose uniform priors on the log-scale by supplying finite
 \code{lower} and \code{upper} bounds.  For informative priors you
-should modify the RTMB objective function directly.
+supply \code{options$priors} to \code{fit_pella_tomlinson_model}; those
+prior contributions remain in the objective used for sampling.
 
 \strong{Derived quantities.}
 After sampling, the function transforms every draw to the natural

@@ -107,7 +107,7 @@ fit <- fit_pella_tomlinson_model(
 )
 ```
 
-The returned object is an S4 `ProductionModel` that summarises fit quality
+The returned object is an S3 `ProductionModel` list that summarises fit quality
 and estimated parameters:
 
 ```{r print-model}
@@ -183,6 +183,10 @@ legend("topright", legend = c("True", "Estimated"),
 The `plot_model_fit()` function produces four diagnostic panels: biomass
 trajectory, observed vs fitted CPUE, residuals, and harvest rate.
 
+Known plotting limitation: for a single unlabelled index, the CPUE plot can
+separate observed and fitted values into `obs_mat` and `A1` facets. These are
+the same area; the separation is a plotting issue, not a second CPUE series.
+
 ```{r diagnostics, fig.height = 8, fig.width = 7, results = "hide", message = FALSE}
 plots <- plot_model_fit(fit, which = "all")
 ```
@@ -219,6 +223,65 @@ fit_multi <- fit_pella_tomlinson_model(
 print(fit_multi)
 ```
 
+## Fixed Fox Model
+
+Set `fixed_params = list(log_m = 0)` to fix *m* at 1 and use the exact
+analytic Fox limit:
+
+```{r fit-fox}
+fit_fox <- fit_pella_tomlinson_model(
+  model_data,
+  options = list(fixed_params = list(log_m = 0))
+)
+calculate_reference_points(fit_fox)
+```
+
+## Spatial Movement and Shared Catchability
+
+Add an `area` column to both data frames for a spatial fit. Each area has its
+own estimated `K`; `area_k_shares` is deprecated and ignored. Catchability is
+estimated per area, or per area and label when a `label` column is supplied.
+
+For a common catchability across areas, omit the `label` column and set
+`shared_q = TRUE`. This requires at least two areas and explicit starting
+values with `log_q_shared` replacing the per-area catchabilities. For example,
+given multi-area data frames `cpue_df` and `catch_df`:
+
+```{r shared-q, eval = FALSE}
+spatial_data <- list(cpue_data = cpue_df, catch_data = catch_df)
+processed <- prepare_model_data(cpue_df, catch_df)
+starts <- prepare_starting_values(processed)
+q_names <- grep("^log_q\\.", names(starts), value = TRUE)
+starts$log_q_shared <- mean(unlist(starts[q_names]))
+starts[q_names] <- NULL
+
+fit_shared <- fit_pella_tomlinson_model(
+  spatial_data,
+  params_init = starts,
+  options = list(shared_q = TRUE, fixed_params = list(log_m = log(2)))
+)
+fit_shared$results$parameters["q_shared"]
+```
+
+Movement can be specified in `data$movement` using either:
+
+- Gravity inputs: `distance_matrix`, `attractiveness`, `decay`, and
+  `movement_rate`. Use `estimate_movement_rate = TRUE` to estimate the rate.
+- A complete `transition_matrix`: rows are source areas and columns are
+  destinations. Entries must be finite and non-negative, and every row must
+  sum to one, including retention on the diagonal. This matrix takes precedence
+  over gravity inputs and ignores `movement_rate`; estimating a separate rate
+  is not supported with a complete matrix.
+
+Movement redistributes biomass after each annual production/catch/process-error
+step. With movement inputs, a requested `spinup_years = 0` is replaced by 50
+zero-catch years to approximate the unfished spatial equilibrium. Initial
+depletion `d0` multiplies this equilibrium, which may differ from per-area `K`.
+Without movement, initial biomass is `d0 * K` and spin-up has no effect.
+
+See `inst/examples/example_shared_q.R` in the source repository for a runnable
+two-area example with a complete transition matrix.
+
 ## Model Formulation
 
 The Pella-Tomlinson surplus production model used in this package is:
@@ -233,9 +296,19 @@ Fox form $P(B) = r\,B\,\log(K/B)$. The maximum-sustainable-yield reference
 points are $B_{\text{MSY}} = K\,m^{-1/(m-1)}$, $F_{\text{MSY}} = r/m$, and
 $\text{MSY} = F_{\text{MSY}}\,B_{\text{MSY}}$.
 
-**State equation (biomass dynamics):**
+**State equation (deterministic default, without movement or covariates):**
 
-$$B_{t+1} = B_t + P(B_t) - C_t + \varepsilon_t, \quad \varepsilon_t \sim N(0, \sigma^2_{\text{proc}})$$
+$$B_{t+1} = B_t + P(B_t) - C_t$$
+
+With `options$process_noise = TRUE`, process deviations act on log biomass:
+
+$$\log B_{t+1} = \log\{B_t + P(B_t) - C_t\} + \varepsilon_t,
+\quad \varepsilon_t \sim N(0, \sigma^2_{\text{proc}}).$$
+
+These deviations are RTMB random effects integrated using the Laplace
+approximation. Set `process_error_structure = "ar1"` for correlated deviations;
+then `sigma_proc` is the innovation SD. The implementation uses a smooth
+positive biomass floor and penalises catch exceeding available biomass.
 
 **Observation equation:**
 

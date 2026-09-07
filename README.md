@@ -2,7 +2,7 @@
 
 ## Overview
 
-`SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model. It supports an optional state-space formulation with process error for model fitting. This package also serves as the operating model foundation for the the Surplus Production Model Management Strategy Evaluation (MSE) framework.
+`SurplusProductionModel` is an R package that implements a spatial Pella-Tomlinson surplus production model. It supports an optional state-space formulation with process error for model fitting. This package also serves as the operating model foundation for the Surplus Production Model Management Strategy Evaluation (MSE) framework.
 
 ## Key Features
 
@@ -13,12 +13,12 @@
   - Fox model (*m* = 1): asymmetric production curve with peak at lower biomass (Fox 1970)
 - **Optional state-space framework** with process error in biomass dynamics when `options$process_noise = TRUE`, plus observation error in CPUE
 - **RTMB integration** for automatic differentiation and fast optimization via `nlminb`
-- **Spatial structure** supporting multiple management areas with optional movement; the movement kernel follows a gravity formulation (Turchin 1998)
-- **Multi-index support** for multiple CPUE series per area
+- **Spatial structure** with independently estimated carrying capacities per area and optional movement via a gravity kernel or a complete transition matrix
+- **Multi-index support** for multiple CPUE series per area, or a shared catchability across areas for unlabelled indices
 
 ### Convergence Diagnostics
 
-- **Multi-start optimization** (`n_starts` parameter) to find global minimum
+- **Multi-start optimization** (`options$n_starts`) to search for a better optimum
 - **Jitter test** (`jitter_test()`) to assess optimization reliability from perturbed starts
 - **Retrospective analysis** (`retrospective_analysis()`) with Mohn's rho for systematic bias detection
 
@@ -31,9 +31,9 @@
 
 ### Diagnostics & Visualization
 
-- **Reference points**: MSY, B `<sub>`MSY `</sub>`, F `<sub>`MSY `</sub>` with current B/B `<sub>`MSY `</sub>` ratio
+- **Reference points**: MSY, B<sub>MSY</sub>, F<sub>MSY</sub> with current B/B<sub>MSY</sub> ratio
 - **Residual diagnostics** (`plot_residuals()`): QQ plots, residuals vs. fitted, histograms
-- **Biomass plots** (`plot_biomass()`): trajectories with confidence bands and B `<sub>`MSY `</sub>` reference
+- **Biomass plots** (`plot_biomass()`): trajectories with confidence bands and B<sub>MSY</sub> reference
 - **Standard diagnostic panel** (`plot_model_fit()`): biomass, CPUE fit, residuals, harvest rate
 
 ## Installation
@@ -66,17 +66,20 @@ data_list <- list(
   catch_data = ross_sea_catch
 )
 
-# Fit Pella-Tomlinson model
-model_fit <- fit_pella_tomlinson_model(data_list)
+# Fit the Schaefer special case (fix the poorly identified shape parameter)
+model_fit <- fit_pella_tomlinson_model(
+  data_list, options = list(fixed_params = list(log_m = log(2)))
+)
 
 # Explicit state-space fit with process error
 model_fit_ss <- fit_pella_tomlinson_model(
   data_list,
-  options = list(process_noise = TRUE)
+  options = list(process_noise = TRUE, fixed_params = list(log_m = log(2)))
 )
 
 # Optional environmental covariates + AR1 process error
 # (example covariate shown as annual SST anomaly)
+set.seed(123)
 env_data <- data.frame(
   year = ross_sea_catch$year,
   sst_anomaly = scale(rnorm(nrow(ross_sea_catch)))
@@ -90,6 +93,7 @@ model_fit_env_ar1 <- fit_pella_tomlinson_model(
   ),
   options = list(
     process_noise = TRUE,
+    fixed_params = list(log_m = log(2)),
     process_error_structure = "ar1",
     env_covariates = "sst_anomaly",
     env_lag = 0
@@ -107,6 +111,32 @@ print(ref_points)
 # Generate diagnostic plots
 plot_model_fit(model_fit)
 ```
+
+## Spatial Models and Fixed Fox Fits
+
+Add an `area` column to catch and CPUE data for spatial fits. Carrying capacity
+is estimated independently per area (`area_k_shares` is deprecated). By default,
+catchability is estimated per area, or per area and label if CPUE has a `label`
+column. Set `options$shared_q = TRUE` for one catchability across two or more
+areas: omit the `label` column and provide explicit `params_init` with
+`log_q_shared` replacing all per-area `log_q.<area>` entries. Automatic starts
+are not supported in this mode.
+
+Movement accepts either gravity inputs (`distance_matrix`, `attractiveness`,
+`decay`, and `movement_rate`) or a complete `data$movement$transition_matrix`.
+The latter has source areas in rows and destinations in columns, with finite,
+non-negative entries and each row summing to one, including retention. It is
+applied in full and overrides gravity inputs; `movement_rate` is ignored and
+cannot be estimated with a complete matrix. Movement inputs trigger a 50-year
+zero-catch spin-up when `spinup_years` is zero. Initial depletion multiplies
+the resulting unfished spatial equilibrium, which can differ from per-area `K`.
+
+For the exact Fox model, use `options = list(fixed_params = list(log_m = 0))`.
+The objective then uses the analytic limit at *m* = 1.
+
+See the [getting-started vignette](vignettes/getting-started.Rmd),
+[multi-index example](inst/examples/example_multiindex.R), and
+[shared catchability and movement example](inst/examples/example_shared_q.R).
 
 ## Complete Analysis Workflow
 
@@ -145,8 +175,8 @@ model_data <- list(
 model_fit <- fit_pella_tomlinson_model(
   model_data,
   options = list(
-    n_starts = 3,  # Multiple starts to find global minimum
-    verbose = TRUE
+    n_starts = 3,  # Compare multiple starting points
+    control = list(eval.max = 5000, iter.max = 2000)
   )
 )
 
@@ -176,18 +206,22 @@ target_ref_points$target_reference_points
 ### Step 3: Convergence Diagnostics
 
 ```r
-# Jitter test: verify optimization found global minimum
+# Jitter test: assess sensitivity to starting values
 jitter_results <- jitter_test(model_fit, n_jitter = 20, jitter_sd = 0.2)
 print(jitter_results)  # Shows convergence rate and parameter stability
 plot(jitter_results)   # Visualize parameter distributions across starts
 
 # Retrospective analysis: check for systematic bias
 retro_results <- retrospective_analysis(model_fit, n_peels = 5)
-print(retro_results)   # Shows Mohn's rho for each parameter
+print(retro_results)   # Shows Mohn's rho for terminal biomass
 plot(retro_results)    # Biomass trajectories with retrospective pattern
 ```
 
 ### Step 4: Model Diagnostics
+
+Known plotting limitation: single-index CPUE observations and fitted values
+can appear in separate `obs_mat` and `A1` facets despite representing the same
+area. This is a plotting issue.
 
 ```r
 # Standard 4-panel diagnostic plot
@@ -201,6 +235,11 @@ plot_biomass(model_fit)
 ```
 
 ### Step 5: Profile Likelihood Confidence Intervals
+
+The workflow above estimates *m*. Derived-quantity profiles currently require
+*m* to be estimated: fixed-shape fits fail when profiling MSY or depletion
+targets. An `NA` confidence limit means the evaluated profile grid did not
+establish that limit.
 
 ```r
 # Profile likelihood CI for intrinsic growth rate (r)
@@ -273,7 +312,7 @@ if (requireNamespace("SparseNUTS", quietly = TRUE)) {
 | -------------------------------- | ------------------------------------------------------------------ |
 | `plot_model_fit()`             | 4-panel: biomass, CPUE fit, residuals, harvest rate                |
 | `plot_residuals()`             | QQ plot, histogram, residuals vs fitted                            |
-| `plot_biomass()`               | Biomass trajectory with CI and B `<sub>`MSY `</sub>` reference |
+| `plot_biomass()`               | Biomass trajectory with CI and B<sub>MSY</sub> reference |
 | `jitter_test()`                | Optimization reliability assessment                                |
 | `retrospective_analysis()`     | Mohn's rho and retrospective bias patterns                         |
 | `profile_likelihood()`         | Likelihood-based confidence intervals                              |
@@ -288,12 +327,12 @@ The Pella-Tomlinson model is defined by:
 P(B) = r / (m - 1) × B × (1 - (B/K)^(m-1))
 
 with the Fox limit P(B) = r × B × log(K/B) as *m* → 1, and the Schaefer
-form P(B) = r × B × (1 - B/K) at *m* = 2. With this parameterisation *r*
-is the intrinsic growth rate (the maximum per-capita production rate as
-*B* → 0). Reference points are B_MSY = K·*m*^(-1/(m-1)), F_MSY = *r*/*m*,
+form P(B) = r × B × (1 - B/K) at *m* = 2. Here *r* scales productivity;
+the low-biomass per-capita limit is r/(m-1) for m > 1 and is unbounded in
+the Fox limit. Reference points are B_MSY = K·*m*^(-1/(m-1)), F_MSY = *r*/*m*,
 and MSY = F_MSY·B_MSY (Fox: K/e, *r*, rK/e).
 
-**State equation (deterministic default):**
+**State equation (deterministic default, without movement or covariates):**
 B[t+1] = B[t] + P(B[t]) - C[t]
 
 **State equation (optional state-space mode):**

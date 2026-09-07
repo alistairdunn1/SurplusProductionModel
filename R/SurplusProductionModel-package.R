@@ -16,7 +16,7 @@
 #'   \item Multi-index support for multiple CPUE series per area
 #'   \item Convergence diagnostics: multi-start optimization, jitter tests, retrospective analysis
 #'   \item Profile likelihood confidence intervals for parameters and derived quantities
-#'   \item Bayesian inference via tmbstan MCMC sampling
+#'   \item Bayesian inference via SparseNUTS MCMC sampling
 #'   \item Comprehensive diagnostics and model validation tools
 #' }
 #'
@@ -39,7 +39,7 @@
 #'
 #' \itemize{
 #'   \item \code{\link{profile_likelihood}}: Profile likelihood CIs for parameters and derived quantities
-#'   \item \code{\link{bayesian_fit}}: Bayesian MCMC sampling via tmbstan
+#'   \item \code{\link{bayesian_fit}}: Bayesian MCMC sampling via SparseNUTS
 #'   \item \code{\link{posterior_predictive_check}}: Bayesian model validation
 #' }
 #'
@@ -55,9 +55,13 @@
 #'
 #' The Pella-Tomlinson model is defined by:
 #'
-#' Production function: P(B) = r × B × (1 - (B/K)^(m-1)) / m
+#' Production function: \code{P(B) = r * B * (1 - (B/K)^(m-1)) / (m-1)}
+#' with the Fox limit \code{P(B) = r * B * log(K/B)} at \code{m = 1}.
 #'
-#' State equation: \code{B(t+1) = B(t) + P(B(t)) - C(t) + e(t)}
+#' Deterministic state equation (without movement or covariates):
+#' \code{B(t+1) = B(t) + P(B(t)) - C(t)}.
+#' With \code{options$process_noise = TRUE}, process deviations are additive
+#' on log biomass: \code{log(B(t+1)) = log(B(t) + P(B(t)) - C(t)) + e(t)}.
 #'
 #' Observation equation: \code{CPUE(t) = q * B(t) * exp(n(t))}
 #'

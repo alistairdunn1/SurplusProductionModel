@@ -62,16 +62,32 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
 #'   \describe{
 #'     \item{cpue_data}{Data frame with columns: year, cpue, optional: area, label, and observation-uncertainty inputs such as cv, se, or obs_sd_log}
 #'     \item{catch_data}{Data frame with columns: year, catch, optional: area}
-#'     \item{movement}{optional list with movement inputs: distance_matrix (area by area matrix), attractiveness (named numeric by area)}
+#'     \item{movement}{Optional list containing either a complete
+#'       \code{transition_matrix}, or gravity inputs \code{distance_matrix},
+#'       \code{attractiveness}, and \code{decay}, with optional
+#'       \code{movement_rate} (default: 0). Matrices are area by area;
+#'       named rows/columns are aligned to model areas. A transition matrix
+#'       has source areas in rows, destinations in columns, finite non-negative
+#'       entries, and rows summing to one (including retention on the diagonal).
+#'       It takes precedence over gravity inputs and is applied in full;
+#'       \code{movement_rate} is ignored and cannot be estimated in this mode.}
+#'     \item{env_data}{Optional data frame with \code{year}, optional
+#'       \code{area}, and columns selected by \code{options$env_covariates}.}
 #'   }
 #' @param params_init Named list of starting parameter values (optional).
-#'   If NULL, starting values are generated automatically.
+#'   If NULL, starting values are generated automatically, except when
+#'   \code{options$shared_q = TRUE}, which requires explicit starting values.
 #' @param options List of optimization options (optional):
 #'   \describe{
 #'     \item{silent}{Logical, suppress RTMB output (default: TRUE)}
 #'     \item{show_starting_values_message}{Logical, print a message when
 #'       starting values are generated automatically (default: TRUE).}
 #'     \item{control}{List of control parameters for nlminb}
+#'     \item{fixed_params}{Named list of parameters to fix. Use working-scale
+#'       names and values, e.g. \code{list(log_m = log(2))} for Schaefer or
+#'       \code{list(log_m = 0)} for the exact Fox model.}
+#'     \item{calculate_se}{Logical, calculate standard errors using
+#'       \code{RTMB::sdreport} (default: TRUE).}
 #'     \item{validate_data}{Logical, run data validation (default: TRUE)}
 #'     \item{process_noise}{Logical, enable state-space process deviations as
 #'       RTMB random effects integrated with the Laplace approximation
@@ -114,7 +130,10 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
 #'       across all areas rather than one per area (default: FALSE). Only
 #'       valid for multi-area fits without per-area-label indices. Supply
 #'       \code{log_q_shared} in \code{params_init} instead of per-area
-#'       \code{log_q.<area>} values when enabled.}
+#'       \code{log_q.<area>} values when enabled. Omit the \code{label}
+#'       column from CPUE data, even for a single label. Automatic starting
+#'       values are not supported; use \code{prepare_starting_values} and
+#'       replace its per-area catchabilities with \code{log_q_shared}.}
 #'     \item{area_k_shares}{Deprecated and ignored. Carrying capacity is now
 #'       estimated independently for each area in multi-area fits.}
 #'     \item{priors}{Optional named list of priors on model parameters.
@@ -132,8 +151,8 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
 #'
 #' @details
 #' This function implements the complete model fitting workflow:
-#' To fit the Fox model, fix \code{m = 1} (or \code{log_m = 0}) through
-#' \code{fixed_params}. The RTMB objective then uses the analytic Fox limit.
+#' To fit the Fox model, set \code{options$fixed_params = list(log_m = 0)}.
+#' The RTMB objective then uses the analytic Fox limit at \code{m = 1}.
 #'
 #' 1. Data validation (if enabled)
 #' 2. Data preprocessing and alignment

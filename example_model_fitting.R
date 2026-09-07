@@ -18,7 +18,7 @@ true_B_initial <- 4000
 # Generate deterministic biomass trajectory
 true_biomass <- numeric(n_years)
 true_biomass[1] <- true_B_initial
-catch_data <- rep(800, n_years) # Constant catch
+catch_data <- rep(300, n_years) # Constant catch below the true MSY of 375
 
 for (t in 1:(n_years - 1)) {
   # Pella-Tomlinson production
@@ -49,11 +49,12 @@ print(model_data$catch_data)
 # Fit the Pella-Tomlinson model
 cat("\nFitting Pella-Tomlinson surplus production model...\n")
 
-# Set options for faster convergence in example
+# Fix the known shape parameter and allow enough iterations for convergence
 options_list <- list(
   validate_data = TRUE,
   silent = TRUE,
-  control = list(eval.max = 200, iter.max = 100)
+  fixed_params = list(log_m = log(true_m)),
+  control = list(eval.max = 5000, iter.max = 2000)
 )
 
 # Fit the model
@@ -68,6 +69,9 @@ print(fitted_model)
 
 # Extract fitted parameters
 fitted_params <- fitted_model$parameters
+# K and q have area suffixes even in a single-area fit.
+fitted_params <- fitted_params[c("r", "K.A1", "m", "q.A1")]
+names(fitted_params) <- c("r", "K", "m", "q")
 cat("\nFitted Parameters:\n")
 cat("r (intrinsic growth rate):", round(fitted_params["r"], 4), "\n")
 cat("K (carrying capacity):", round(fitted_params["K"], 1), "tonnes\n")
