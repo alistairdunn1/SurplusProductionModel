@@ -122,9 +122,16 @@ create_rtmb_objective <- function(data_env) {
       B_initial_vec[ia] <- K_vec[ia]
     }
 
-    # q – may be per-area or per-area-label
+    # q – may be per-area, per-area-label, or a single value shared by all areas
     has_labels <- !is.null(data_env$labels)
-    if (has_labels) {
+    is_shared_q <- isTRUE(data_env$shared_q)
+    if (is_shared_q) {
+      q_shared <- exp(parms[["log_q_shared"]])
+      q_vec <- RTMB::advector(numeric(n_areas))
+      for (ia in seq_len(n_areas)) {
+        q_vec[ia] <- q_shared
+      }
+    } else if (has_labels) {
       labels <- data_env$labels
       n_labels <- length(labels)
       q_arr <- RTMB::advector(matrix(0, n_areas, n_labels))

@@ -110,6 +110,11 @@ prepare_starting_values <- function(processed_data, k_start = NULL) {
 #'       run with the lowest objective is retained.}
 #'     \item{jitter_sd}{Numeric, standard deviation of log-normal jitter
 #'       applied to starting values for multi-start (default: 0.2).}
+#'     \item{shared_q}{Logical, force a single catchability parameter shared
+#'       across all areas rather than one per area (default: FALSE). Only
+#'       valid for multi-area fits without per-area-label indices. Supply
+#'       \code{log_q_shared} in \code{params_init} instead of per-area
+#'       \code{log_q.<area>} values when enabled.}
 #'     \item{area_k_shares}{Deprecated and ignored. Carrying capacity is now
 #'       estimated independently for each area in multi-area fits.}
 #'     \item{priors}{Optional named list of priors on model parameters.
@@ -395,8 +400,21 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     processed_data$env_scaling <- env_info$scaling
   }
 
+  shared_q <- isTRUE(options$shared_q)
+  if (shared_q) {
+    if (is.null(processed_data$areas) || length(processed_data$areas) < 2L) {
+      stop("options$shared_q = TRUE requires a multi-area fit (data$cpue_data$area with at least two areas)")
+    }
+    if (!is.null(processed_data$labels)) {
+      stop("options$shared_q = TRUE is not supported together with per-area-label indices")
+    }
+  }
+
   # Generate starting values if not provided
   if (is.null(params_init)) {
+    if (shared_q) {
+      stop("options$shared_q = TRUE requires params_init with log_q_shared; automatic starting-value generation does not support a shared catchability parameter")
+    }
     params_init <- generate_starting_values(processed_data)
     if (isTRUE(options$show_starting_values_message)) {
       message("Generated starting parameter values automatically")
@@ -409,7 +427,9 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     if (!is.null(processed_data$areas)) {
       area_suffix <- paste0(".", processed_data$areas)
       k_names <- paste0("log_K", area_suffix)
-      if (!is.null(processed_data$labels)) {
+      if (shared_q) {
+        required_params <- c(required_params, k_names, "log_q_shared", "log_d0")
+      } else if (!is.null(processed_data$labels)) {
         # q per area and label
         label_suffix <- paste0(".", processed_data$labels)
         q_names <- as.vector(outer(paste0("log_q", area_suffix), label_suffix, paste0))
@@ -521,7 +541,8 @@ fit_pella_tomlinson_model <- function(data, params_init = NULL, options = list()
     cpue_sd = cpue_sd,
     labels = if (has_labels) processed_data$labels else NULL,
     process_error_structure = process_error_structure,
-    spinup_years = spinup_years
+    spinup_years = spinup_years,
+    shared_q = shared_q
   )
 
   if (!is.null(processed_data$env_array)) {
@@ -1511,9 +1532,15 @@ calculate_model_results <- function(parameters, data, process_deviations = NULL)
     out
   }
   if (multi_area) {
-    # Per-area q or per-index q
+    # Per-area q, per-index q, or a single q shared across all areas (see the
+    # shared_q fitting option)
     if (!has_labels) {
-      q_vec <- get_param_area(parameters, "q", areas)
+      pnames <- names(parameters)
+      if (!is.null(pnames) && "q_shared" %in% pnames) {
+        q_vec <- stats::setNames(rep(unname(parameters[["q_shared"]]), length(areas)), areas)
+      } else {
+        q_vec <- get_param_area(parameters, "q", areas)
+      }
     } else {
       # Build per-index q array [area x label]
       pnames <- names(parameters)
