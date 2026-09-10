@@ -108,6 +108,24 @@ pt_equilibrium_f <- function(r, K, m, biomass) {
   prod
 }
 
+#' Smooth Biomass Floor
+#'
+#' Differentiable approximation to \code{pmax(x, 0)}, offset by a small
+#' constant. Mirrors the soft floor RTMB applies inside the likelihood
+#' (rtmb-objective.R), where a hard \code{pmax()} would break automatic
+#' differentiation. Used by the R-side trajectory reconstruction so it
+#' reproduces the same biomass path as the fitted likelihood, including at
+#' low biomass where a hard 0.01 floor would otherwise diverge from it.
+#'
+#' @param x Numeric vector.
+#'
+#' @return Numeric vector, always positive.
+#'
+#' @keywords internal
+.smooth_floor <- function(x) {
+  0.5 * (x + sqrt(x * x + 4e-8)) + 1e-8
+}
+
 #' Set Package-Level Reference Point Defaults
 #'
 #' Sets package-wide defaults for depletion target reporting. These defaults

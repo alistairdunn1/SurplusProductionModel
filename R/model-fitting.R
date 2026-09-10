@@ -1681,9 +1681,9 @@ calculate_model_results <- function(parameters, data, process_deviations = NULL)
     for (s in seq_len(spinup_years)) {
       production <- .pt_production(b_spin, r, K_vec, m)
       production[!is.finite(production)] <- 0
-      b_next <- pmax(b_spin + production, 0.01)
+      b_next <- .smooth_floor(b_spin + production)
       if (has_movement) {
-        b_next <- pmax((1 - move_rate) * b_next + move_rate * as.numeric(t(Kmat) %*% b_next), 0.01)
+        b_next <- .smooth_floor((1 - move_rate) * b_next + move_rate * as.numeric(t(Kmat) %*% b_next))
       }
       b_spin <- b_next
     }
@@ -1719,13 +1719,17 @@ calculate_model_results <- function(parameters, data, process_deviations = NULL)
     Bt <- biomass[t, ]
     production <- .pt_production(Bt, r, K_vec, m)
     production[!is.finite(production)] <- 0
-    B_det <- pmax(Bt + production - catch_mat[t, ], 0.01)
+    B_det <- .smooth_floor(Bt + production - catch_mat[t, ])
     b_next <- if (has_env || has_process_deviations) {
       log_increment <- env_term[t, ]
       if (has_process_deviations) {
         log_increment <- log_increment + process_deviations[t, ]
       }
-      pmax(exp(log(B_det) + log_increment), 0.01)
+      # No floor here: the RTMB objective does not re-floor after adding the
+      # process/env log-increment (rtmb-objective.R), only B_det upstream is
+      # floored. Flooring again here would diverge from the fitted likelihood
+      # trajectory whenever a deviation pushes biomass below 0.01.
+      exp(log(B_det) + log_increment)
     } else {
       B_det
     }
@@ -1734,9 +1738,8 @@ calculate_model_results <- function(parameters, data, process_deviations = NULL)
     # areas over time and matches the RTMB objective (a genuine movement
     # process rather than a post-hoc reshaping of the reported trajectory).
     if (has_movement) {
-      b_next <- pmax(
-        (1 - move_rate) * b_next + move_rate * as.numeric(t(Kmat) %*% b_next),
-        0.01
+      b_next <- .smooth_floor(
+        (1 - move_rate) * b_next + move_rate * as.numeric(t(Kmat) %*% b_next)
       )
     }
     biomass[t + 1, ] <- b_next
